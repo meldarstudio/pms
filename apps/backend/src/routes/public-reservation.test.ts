@@ -400,6 +400,22 @@ describe("private reservation summary", () => {
     expect((await staffDetail(secondDetail.id)).code).toBe(secondDetail.code);
   });
 
+  it("lets staff retrieve the original link without exposing it to guests or caches", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout);
+    const link = (await (await checkoutAccess(checkout.token)).json()) as AccessLink;
+    const path = `/reservations/${await reservationId()}/access`;
+
+    const refused = await guest(path, { token: checkout.token });
+    expect(refused.status).toBe(401);
+    hidden(await refused.json(), [link.token]);
+
+    const staff = await db.request(path);
+    expect(staff.status).toBe(200);
+    expect(staff.headers.get("cache-control")).toBe("private, no-store");
+    expect(await staff.json()).toEqual({ ...link, expired: false });
+  });
+
   it("refuses an expired token the same way as an unknown one, without stopping payment recovery", async () => {
     const checkout = await acceptedCheckout();
     await paid(checkout);

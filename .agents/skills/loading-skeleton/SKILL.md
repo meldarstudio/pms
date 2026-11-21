@@ -7,7 +7,7 @@ description: Build or adjust a portal loading skeleton by measuring the loaded U
 
 A skeleton is done when it is a **tracing** of the loaded UI: same region size, every bar on the line its text will occupy. Trace by measuring both states in a browser; happy-dom tests cannot see geometry.
 
-[Loading states](../../../docs/portal.md#loading-states) owns the rules (the `Skeleton` primitive, `aria-busy`, the Spanish loading label, what stays real). Read it first.
+First reads use content-shaped `Skeleton` placeholders (`apps/portal/src/components/ui/skeleton.tsx`); spinners are only for actions and the session gate. The loading region carries `aria-busy` and a Spanish label such as `aria-label="Cargando reservas"`. Static headings and controls stay real and usable.
 
 ## Steps
 
@@ -16,7 +16,7 @@ A skeleton is done when it is a **tracing** of the loaded UI: same region size, 
    ```sh
    mkdir -p /tmp/skeleton-measure && cd /tmp/skeleton-measure
    echo '{"type":"module","private":true}' > package.json && pnpm add playwright-core
-   cp <repo>/.claude/skills/loading-skeleton/{measure,example-driver}.mjs .
+   cp <repo>/.agents/skills/loading-skeleton/{measure,example-driver}.mjs .
    ```
    Launch the system browser (`which chromium`) through `executablePath`; no browser download.
 3. **Driver.** Copy `example-driver.mjs` to `driver.mjs` and edit its marked parts: the region selector, the steps that reach the state, a loaded-only text signal, and the read URL to hold. It measures the loaded region, then reloads with that read held behind a gate and measures the skeleton, then prints `compare` (region Δh, then leaves paired in document order with Δy). Run with `PMS_USER`/`PMS_PASSWORD` set, at `1440x900` and `390x844`, plus a screenshot prefix.

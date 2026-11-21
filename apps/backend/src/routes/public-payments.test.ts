@@ -380,7 +380,8 @@ describe("what a payment can charge", () => {
   });
 
   it("keeps the agreement when an expired quote is refreshed unchanged, and charges that replacement once", async () => {
-    const checkout = await acceptedCheckout();
+    const notes = "We will arrive after dinner.";
+    const checkout = await acceptedCheckout({}, notes);
     vi.advanceTimersByTime(10 * 60_000);
 
     const refreshed = await guest("/public/checkout/quotes", {
@@ -407,6 +408,7 @@ describe("what a payment can charge", () => {
     expect(rows("SELECT full_name, email, phone FROM guests")).toEqual([
       { full_name: "Ana Torres", email: "ana@example.com", phone: "+51987654321" },
     ]);
+    expect(rows("SELECT notes FROM reservations")).toEqual([{ notes }]);
   });
 
   it("requires a new acceptance when a refreshed quote is cheaper, and charges only that accepted amount", async () => {
@@ -696,9 +698,11 @@ const continueAuthentication = (token: string, body?: unknown) =>
   });
 
 describe("continuing bank authentication", () => {
-  it("charges the original attempt and source after the quote expires, and a repeat does not charge again", async () => {
+  it("charges the original attempt once even after quote expiry and while new payments are paused", async () => {
     const checkout = await acceptedCheckout();
     await paid(checkout, { sourceId: "tkn_test_3ds", deviceFingerprint: "device-1" });
+    await admitPayments(false);
+    const consumed = failingLimiters();
     vi.advanceTimersByTime(11 * 60_000);
 
     const continued = await continueAuthentication(checkout.token);
@@ -714,6 +718,7 @@ describe("continuing bank authentication", () => {
     });
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual({ payment });
+    expect(consumed).toEqual([]);
     expect(charges()).toHaveLength(2);
     const [{ id }] = rows<{ id: string }>("SELECT id FROM payment_attempts");
     expect(charges()[1]!.body).toMatchObject({

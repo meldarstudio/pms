@@ -54,12 +54,13 @@ failure in the change description, then run the affected tests and
 
 ## Documentation
 
-Code is the docs. Prose is limited to `AGENTS.md` files, `docs/agents/`, this file,
-and `GLOSSARY.md`. During review:
+Code is the docs. During review:
 
-- Flag new prose guides. Prefer clear names, types, and tests that state the rule.
-- Keep `AGENTS.md` and `docs/agents/` accurate against the final code, scripts, and
-  config. Verify repository links and code paths they mention.
+- Put feature behavior in names and types, with tests for the risks listed above.
+  Use `docs/adr/` for durable architectural trade-offs, not walkthroughs.
+- Keep `AGENTS.md` and `docs/agents/` focused on pointers, guardrails, and gotchas
+  that are hard to discover from code. Verify links and code paths in changed
+  instructions; flag feature summaries and changelog entries.
 - Keep business vocabulary aligned with the glossary; update it in the same change
   when a term's meaning changes.
 - Linted code has no comments except tool directives. `pms/no-comments` enforces

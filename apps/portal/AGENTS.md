@@ -6,9 +6,9 @@ worker or heap limits; follow the root [frontend testing policy](../../CODING_ST
 
 ## Navigation and data
 
-- Code-based TanStack Router routes live in `src/router.tsx`; `src/App.tsx` owns the shell and `src/components/app-sidebar.tsx` owns navigation. Calendar bars open the reservation's `ReservationPage`, the editing workspace; calendar room assignment stays in its existing flow. On that page, an assigned room number opens a same-type replacement picker that writes one `edit-room` with `expectedRoomId` only after confirmation. `RoomBookingDialog` handles creation only; successful creation from either entry point opens the new reservation page. Calendar-origin pages return to the calendar's range and scroll position.
-- Fetch helpers, response types, and query-string types are hand-written in `src/lib/api.ts`, which re-exports request body types from `@pms/shared`; query hooks live in `src/lib/queries.ts`. Saves and bill previews for an existing reservation go through `src/lib/reservation-commands.ts`. Import only types from `@pms/shared`, using `import type`; the runtime exception is `@pms/shared/phone`. `src/lib/phone.ts` adds the saved-phone draft and Spanish messages; pass its `phoneInputText` to `editPhone` so an unchanged saved phone keeps its original text.
-- Portal-local reservation schemas live in `src/lib/reservation-form-schemas.ts`.
+- Code-based TanStack Router routes live in `src/router.tsx`; `src/App.tsx` owns the shell and `src/components/app-sidebar.tsx` owns navigation. `ReservationPage` is the reservation editing workspace; `RoomBookingDialog` handles creation only.
+- Fetch helpers and response types live in `src/lib/api.ts`; query hooks in `src/lib/queries.ts`. Saves and bill previews for an existing reservation go through `src/lib/reservation-commands.ts`. Portal-local reservation schemas live in `src/lib/reservation-form-schemas.ts`.
+- Pass `phoneInputText` from `src/lib/phone.ts` to `editPhone` so an unchanged saved phone keeps its original text.
 
 ## API environment
 
@@ -17,7 +17,6 @@ worker or heap limits; follow the root [frontend testing policy](../../CODING_ST
 
 ## UI conventions
 
-- Keep type-only imports as `import type` or inline `type` imports.
 - Follow `components.json` and existing `src/components/ui` primitives when composing shadcn UI. Import `cn` from `"cn"`, rather than the generated utils alias.
 - Add shadcn components from `apps/portal` with `pnpm exec shadcn add <name>`.
 

@@ -131,8 +131,13 @@ const history = () =>
   );
 
 describe("abandoned checkout purge", () => {
-  it("deletes an abandoned checkout's quotes, acceptance and failed attempt once it has been idle over 30 days", async () => {
+  it("deletes an abandoned checkout after 30 idle days without deleting legacy quotes", async () => {
     const abandoned = await declinedCheckout();
+    const legacyCheckout = await checkout();
+    const { id: legacyQuote } = await latestQuote(getDb(db.env.DB), legacyCheckout.id);
+    const legacyRow = db.sqlite.prepare("SELECT * FROM quotes WHERE id = ?");
+    db.sqlite.prepare("UPDATE quotes SET checkout_id = NULL WHERE id = ?").run(legacyQuote);
+    const legacyBefore = legacyRow.get(legacyQuote);
     vi.setSystemTime(daysLater(20));
     const recent = await declinedCheckout();
     const recentRows = checkoutRows(recent);
@@ -152,6 +157,7 @@ describe("abandoned checkout purge", () => {
       attempts: 0,
     });
     expect(checkoutRows(recent)).toEqual(recentRows);
+    expect(legacyRow.get(legacyQuote)).toEqual(legacyBefore);
   });
 
   it("keeps a checkout opened 29 days ago", async () => {

@@ -29,14 +29,14 @@ Sign in to the local portal as owner `kevin` with password `owner horse battery 
 - **Backend/API:** [apps/backend/AGENTS.md](apps/backend/AGENTS.md).
 - **Public website:** [apps/website/AGENTS.md](apps/website/AGENTS.md).
 - **Portal/UI:** [apps/portal/AGENTS.md](apps/portal/AGENTS.md).
-- **Shared schemas:** `packages/shared` (`@pms/shared`) supplies backend request schemas and `z.input` request body types. `packages/shared/src/phone.ts` is the only phone parser, validator, and as-you-type mask: the backend validates through `normalizePhone` from `@pms/shared`, and the portal and website import the `@pms/shared/phone` subpath, adding only their country-name language, messages, and saved or stored drafts. Neither app depends on `libphonenumber-js` directly. `packages/shared/src/online-arrival.ts` is the only Online same-day close: the backend property calendar and the website's arrival picker both call its `onlineArrivalCalendar`, the website with a fixed `America/Lima`. Otherwise the portal imports only types from `@pms/shared`, and maintains its own form schemas and response types; check both sides when changing a contract.
+- **Shared schemas:** `packages/shared` (`@pms/shared`) supplies backend request schemas and `z.input` request body types. The portal imports only types from it, except `@pms/shared/phone`, and keeps its own form schemas and response types; check both sides when changing a contract. `packages/shared/src/phone.ts` is the only phone parser, validator, and mask; apps reach `libphonenumber-js` only through it. `packages/shared/src/online-arrival.ts` is the only Online same-day close, shared by the backend calendar and the website's arrival picker.
 - **Domain/architecture:** [docs/agents/domain.md](docs/agents/domain.md); terms live in [GLOSSARY.md](GLOSSARY.md).
 - **Issues/specs:** [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md). Use GitHub Issues in `meldarstudio/pms`.
 - **Triage:** [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
 
 ## Documentation
 
-Code is the docs. Don't add prose guides; put knowledge in names, types, and tests. See [CODING_STANDARDS.md](CODING_STANDARDS.md#documentation).
+Keep `AGENTS.md` unchanged during feature work unless a pointer, guardrail, or gotcha needs correcting. See [CODING_STANDARDS.md](CODING_STANDARDS.md#documentation) for what belongs where.
 
 ## Cross-package contracts
 
