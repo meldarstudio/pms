@@ -3,6 +3,7 @@ import { defineConfig, envField, fontProviders } from "astro/config";
 import svelte from "@astrojs/svelte";
 import tailwindcss from "@tailwindcss/vite";
 import sitemap from "@astrojs/sitemap";
+import { hreflangs } from "./src/i18n/hreflang.ts";
 
 function copyEnglish404() {
   return {
@@ -52,10 +53,13 @@ export default defineConfig({
         !/^\/(en\/)?(reservar\/|libro-de-reclamaciones\/)/.test(new URL(page).pathname),
       i18n: {
         defaultLocale: "es",
-        locales: {
-          es: "es-PE",
-          en: "en-US",
-        },
+        locales: hreflangs,
+      },
+      serialize: (item) => {
+        const spanish = item.links?.find(({ lang }) => lang === hreflangs.es);
+        return spanish
+          ? { ...item, links: [...item.links, { url: spanish.url, lang: "x-default" }] }
+          : item;
       },
     }),
     copyEnglish404(),

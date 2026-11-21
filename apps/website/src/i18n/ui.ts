@@ -129,6 +129,7 @@ export const ui = {
     "hero.parking": "Free parking",
     "hero.bathroom": "Private bathroom",
     "hero.reception": "24-hour front desk",
+    "pets.welcome": "Pets welcome",
     "hero.bookCta": "Check availability",
     "hero.roomsCta": "See rooms and rates",
     "hero.imageAlt": "Room at Hotel Manantial in Churín",
@@ -228,7 +229,7 @@ export const ui = {
       "Any outstanding balance for your stay is due at check-in. We accept cash, cards, Yape and bank transfers. Payment at the hotel does not replace the initial payment required to confirm your reservation.",
     "churin.title": "The springs and town center, on foot",
     "churin.body":
-      "The municipal market is next door and the Plaza de Armas is a 3-minute walk. La Juventud and Mamahuarmi are about 11 and 13 minutes away on foot.",
+      "The municipal market is next door and the Plaza de Armas is a 3-minute walk. The La Juventud and Mamahuarmi hot springs are 5 minutes away by car, or about 11 and 13 minutes on foot.",
     "churin.cta": "Churín hot springs guide",
     "churin.imageAlt": "Plaza de Armas in Churín",
     "churin.pageTitle": "Churín Hot Springs: a practical guide",
@@ -283,7 +284,8 @@ export const ui = {
     "directions.title": "How to get here from Lima",
     "reviews.label": "Since 2005",
     "reviews.title": "What our guests say",
-    "reviews.body": "A family-founded hotel with a 24-hour front desk. Pets welcome.",
+    "reviews.body":
+      "A family-run hotel in the center of Churín, ideal for a hot-springs weekend as a couple or with family. 24-hour front desk, and pets welcome.",
     "reviews.raquel":
       "A lovely place with all the services, in a central spot near the plaza and the market. It has parking.",
     "reviews.vrv": "…good value for money. I stayed 2 nights and everything was fine…",
@@ -768,6 +770,7 @@ export const ui = {
     "hero.parking": "Cochera gratuita",
     "hero.bathroom": "Baño privado",
     "hero.reception": "Recepción 24 horas",
+    "pets.welcome": "Mascotas bienvenidas",
     "hero.bookCta": "Consultar disponibilidad",
     "hero.roomsCta": "Ver habitaciones y precios",
     "hero.imageAlt": "Habitación del Hotel Manantial en Churín",
@@ -867,7 +870,7 @@ export const ui = {
       "Si queda un saldo pendiente de su estadía, deberá abonarlo al realizar el check-in. Aceptamos efectivo, tarjetas, Yape y transferencias bancarias. El pago en el hotel no sustituye el pago inicial requerido para confirmar su reserva.",
     "churin.title": "Las termas y el centro, a pie",
     "churin.body":
-      "El mercado municipal está al lado y la Plaza de Armas, a 3 minutos a pie. A La Juventud y Mamahuarmi se llega caminando en unos 11 y 13 minutos.",
+      "El mercado municipal está al lado y la Plaza de Armas, a 3 minutos a pie. Las termas de La Juventud y Mamahuarmi quedan a 5 minutos en auto o a unos 11 y 13 minutos caminando.",
     "churin.cta": "Guía de las termas de Churín",
     "churin.imageAlt": "Plaza de Armas de Churín",
     "churin.pageTitle": "Termas de Churín: guía práctica para su visita",
@@ -922,7 +925,8 @@ export const ui = {
     "directions.title": "Cómo llegar desde Lima",
     "reviews.label": "Desde 2005",
     "reviews.title": "Lo que dicen nuestros huéspedes",
-    "reviews.body": "Un hotel de origen familiar, con recepción 24 horas y mascotas bienvenidas.",
+    "reviews.body":
+      "Un hotel familiar en el centro de Churín, ideal para un fin de semana de termas en pareja o en familia. Recepción 24 horas y mascotas bienvenidas.",
     "reviews.raquel":
       "Bonito lugar con todos los servicios en un lugar céntrico, cerca a la plaza y al mercado, cuenta con cochera.",
     "reviews.vrv": "…buena relación calidad-precio, estuve 2 noches y todo bien…",

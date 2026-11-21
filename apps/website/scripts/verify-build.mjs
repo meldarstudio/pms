@@ -44,7 +44,8 @@ function checkPage(html, lang, urls, is404 = false) {
     Object.fromEntries(
       links.filter(({ rel }) => rel === "alternate").map(({ hreflang, href }) => [hreflang, href]),
     ),
-    { es: urls.es, en: urls.en, "x-default": urls.es },
+    { "es-PE": urls.es, "en-US": urls.en, "x-default": urls.es },
+    "Page hreflang codes must match the sitemap's",
   );
 }
 
@@ -60,7 +61,17 @@ assert(spanishPages.includes("404.astro"), "Missing 404 page");
 assert(spanishPages.includes("index.astro"), "Missing homepage");
 
 const sitemapUrls = new Set();
-const expectedRedirects = ["/nosotros / 301", "/nosotros/ / 301"];
+const retiredPages = {
+  "/nosotros": "/",
+  "/turismo": "/churin/",
+  "/contacto": "/",
+  "/contactenos": "/",
+  "/cotiza": "/habitaciones/",
+};
+const expectedRedirects = Object.entries(retiredPages).flatMap(([from, to]) => [
+  `${from} ${to} 301`,
+  `${from}/ ${to} 301`,
+]);
 for (const file of spanishPages) {
   const slug = file.replace(/\.astro$/, "");
   const path = slug === "index" ? "" : `${slug.replace(/(^|\/)index$/, "")}/`;
@@ -100,6 +111,12 @@ assert.deepEqual(
   expectedRedirects.sort(),
   "public/_redirects must exactly match the expected canonical and retired-page 301 redirects",
 );
+for (const target of Object.values(retiredPages)) {
+  assert.ok(
+    sitemapUrls.has(`${site}${target}`),
+    `A retired page redirects to a page that is not built and indexed: ${target}`,
+  );
+}
 
 const index = await read(dist, "sitemap-index.xml");
 const sitemapFiles = [...index.matchAll(/<sitemap><loc>([^<]+)<\/loc><\/sitemap>/g)].map(
@@ -126,6 +143,7 @@ for (const file of sitemapFiles) {
     const expected = {
       "es-PE": `${site}/${path}`,
       "en-US": `${site}/en/${path}`,
+      "x-default": `${site}/${path}`,
     };
     assert.deepEqual(
       Object.fromEntries(
@@ -149,6 +167,20 @@ for (const lang of ["es", "en"]) {
   const prefix = lang === "en" ? "en/" : "";
   const home = await read(dist, `${prefix}index.html`);
   assert.ok(home.includes('id="availability"'), `The ${lang} homepage needs its date search`);
+  const hotel = JSON.parse(
+    home.match(/<script type="application\/ld\+json">(.*?)<\/script>/s)?.[1] ?? "{}",
+  );
+  assert.equal(hotel["@type"], "Hotel", `The ${lang} homepage needs Hotel structured data`);
+  assert.equal(hotel.starRating?.ratingValue, "3", "Hotel star rating must match Google's listing");
+  assert.equal(hotel.hasOfferCatalog?.url, `${site}/${prefix}habitaciones/`);
+  assert.equal(hotel.priceRange, undefined, "Rates are dynamic; Hotel must not state a priceRange");
+  assert.doesNotMatch(JSON.stringify(hotel), /pool|piscina/i, "The hotel has no pool");
+  assert.ok(hotel.image?.length > 0, `The ${lang} Hotel structured data needs photos`);
+  for (const image of hotel.image) {
+    const url = new URL(image);
+    assert.equal(url.origin, site);
+    assert.ok((await stat(new URL(`.${url.pathname}`, dist))).size > 0, `Missing ${image}`);
+  }
   const review = await read(dist, `${prefix}reservar/revisar/index.html`);
   const reviewIsland = review.match(
     /<astro-island[^>]*component-url="[^"]*\/Review\.[^"]*"[^>]*>/,

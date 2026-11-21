@@ -14,6 +14,16 @@
 /nosotros / 301
 /nosotros/ / 301
 
+# Pages dropped in the October 2026 relaunch that still had Search Console traffic (#329).
+/turismo /churin/ 301
+/turismo/ /churin/ 301
+/contacto / 301
+/contacto/ / 301
+/contactenos / 301
+/contactenos/ / 301
+/cotiza /habitaciones/ 301
+/cotiza/ /habitaciones/ 301
+
 /libro-de-reclamaciones /libro-de-reclamaciones/ 301
 /en/libro-de-reclamaciones /en/libro-de-reclamaciones/ 301
 

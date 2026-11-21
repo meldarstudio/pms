@@ -8,6 +8,7 @@ import { Font } from "astro:assets";
 import { getAbsoluteLocaleUrl } from "astro:i18n";
 import { i18n } from "astro:config/client";
 import { getLang, getPathWithoutLocale, useTranslations } from "@/i18n/utils";
+import { hreflangs } from "@/i18n/hreflang";
 
 interface Props {
   title?: string;
@@ -57,7 +58,11 @@ const ogLocaleAlternate = lang === "en" ? "es_PE" : "en_US";
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     {!noCanonical && <link rel="canonical" href={canonicalURL} />}
     {locales.map((locale) => (
-      <link rel="alternate" hreflang={locale} href={getAbsoluteLocaleUrl(locale, path)} />
+      <link
+        rel="alternate"
+        hreflang={hreflangs[getLang(locale)]}
+        href={getAbsoluteLocaleUrl(locale, path)}
+      />
     ))}
     {i18n && (
       <link
