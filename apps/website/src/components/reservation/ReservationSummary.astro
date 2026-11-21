@@ -165,7 +165,7 @@ const link =
       if (event.persisted) this.open();
     };
     private readonly pageHidden = () => {
-      this.reading?.clear();
+      this.reading?.cancel();
       this.pendingToken = null;
     };
     private readonly online = () => {
@@ -212,7 +212,7 @@ const link =
       if (this.lastFoundToken !== token) this.lastFoundToken = null;
       this.clearPrivate();
       this.show("loading");
-      this.reading?.run(
+      this.reading?.replace(
         Effect.flatMap(readReservationSummary(token), (outcome) =>
           Effect.sync(() => this.received(token, outcome)),
         ),

@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 import { HttpClientResponse, HttpIncomingMessage } from "effect/http";
-import { type PmsClient, type PmsFailure, pmsGet } from "@/lib/pms-client";
+import { pmsFailures, type PmsClient, type PmsFailure, pmsGet } from "@/lib/pms-client";
 import { FreeCancellation } from "./offers";
 
 const TOKEN = /^[\w-]{43}$/;
@@ -71,10 +71,9 @@ export const readReservationSummary = (
             orElse: () => Effect.succeed<SummaryOutcome>({ kind: "unavailable" }),
           }),
         ),
-        Effect.catchTags({
-          HttpClientError: () => Effect.succeed<SummaryOutcome>({ kind: "unavailable" }),
-          SchemaError: () => Effect.succeed<SummaryOutcome>({ kind: "unavailable" }),
-        }),
+        Effect.catchTags(
+          pmsFailures(() => Effect.succeed<SummaryOutcome>({ kind: "unavailable" })),
+        ),
       )
     : Effect.succeed({ kind: "invalid" });
 
@@ -82,10 +81,7 @@ export const readCheckoutAccess = (token: string) =>
   pmsGet("/public/checkout/access", { token }).pipe(
     Effect.flatMap(HttpClientResponse.filterStatusOk),
     Effect.flatMap(decodeAccess),
-    Effect.catchTags({
-      HttpClientError: () => Effect.succeed(null),
-      SchemaError: () => Effect.succeed(null),
-    }),
+    Effect.catchTags(pmsFailures(() => Effect.succeed(null))),
   );
 
 export function summaryLink(path: string, token: string) {

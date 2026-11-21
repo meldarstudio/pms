@@ -18,6 +18,17 @@ type Pms = {
 
 export type PmsFailure = HttpClientError.HttpClientError | Schema.SchemaError;
 
+export const pmsFailures = <B, E = never>(recover: () => Effect.Effect<B, E>) =>
+  ({ HttpClientError: recover, SchemaError: recover }) satisfies Record<
+    PmsFailure["_tag"],
+    typeof recover
+  >;
+
+const withoutTraceHeadersGuestCorsRejects = Layer.mergeAll(
+  Layer.succeed(HttpClient.TracerPropagationEnabled)(false),
+  Layer.succeed(HttpClient.TracerDisabledWhen)(() => true),
+);
+
 export class PmsClient extends Context.Service<PmsClient, Pms>()("website/PmsClient") {
   static layer(apiBase: string, init: RequestInit = {}) {
     return Layer.effect(
@@ -49,8 +60,7 @@ export class PmsClient extends Context.Service<PmsClient, Pms>()("website/PmsCli
           ...init,
         }),
       ),
-      Layer.provide(Layer.succeed(HttpClient.TracerPropagationEnabled)(false)),
-      Layer.provide(Layer.succeed(HttpClient.TracerDisabledWhen)(() => true)),
+      Layer.provide(withoutTraceHeadersGuestCorsRejects),
     );
   }
 }

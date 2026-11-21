@@ -1,6 +1,5 @@
 import { fileURLToPath } from "node:url";
-import type { APIRequestContext, Page } from "@playwright/test";
-import { expect, test } from "../support/browser-errors";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { executeSql, localDatabase } from "../../../backend/scripts/d1.mjs";
 import {
   FAKE_PAYMENT_SERVICES_URL,

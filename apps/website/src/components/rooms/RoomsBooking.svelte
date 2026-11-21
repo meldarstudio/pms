@@ -153,7 +153,7 @@
   function load(next: StaySearch) {
     loaded = { search: next, result: null };
     phase = { kind: "loading", search: next, previous: result };
-    offerSearch?.run(
+    offerSearch?.replace(
       Effect.flatMap(fetchOffers(next), (outcome) => Effect.sync(() => receive(next, outcome))),
     );
   }
@@ -187,7 +187,7 @@
 
   function show(next: StaySearch, write: HistoryWrite, fresh: boolean) {
     if (!next.checkIn || !next.checkOut) {
-      offerSearch?.clear();
+      offerSearch?.cancel();
       loaded = null;
       pendingFocus = null;
       pendingPosition = false;

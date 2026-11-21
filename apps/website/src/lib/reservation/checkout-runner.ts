@@ -83,7 +83,7 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
     if (!payments || !container) return;
     const ready = Deferred.makeUnsafe<SecurityCheck | null>();
     securityCheck = ready;
-    securityWidget.run(
+    securityWidget.replace(
       renderSecurityCheck(container, {
         siteKey: payments.turnstileSiteKey,
         lang: command.lang,
@@ -188,7 +188,7 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
         );
       case "openBank":
         if (!payments) return null;
-        bank.run(
+        bank.replace(
           authenticateWithBank({
             publicKey: payments.culqiPublicKey,
             amountCents: command.amountCents,
@@ -217,10 +217,10 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
         clearContact();
         return null;
       case "schedulePoll":
-        poll.run(Effect.andThen(Effect.sleep(PAYMENT_POLL_MS), send({ type: "pollElapsed" })));
+        poll.replace(Effect.andThen(Effect.sleep(PAYMENT_POLL_MS), send({ type: "pollElapsed" })));
         return null;
       case "cancelPoll":
-        poll.clear();
+        poll.cancel();
         return null;
       case "copyAccessLink":
         return Effect.flatMap(copyText(summaryLink(summaryHref, command.token)), (copied) =>

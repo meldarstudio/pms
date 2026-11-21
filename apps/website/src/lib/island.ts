@@ -1,8 +1,8 @@
 import { Cause, Effect, Exit, FiberHandle, FiberSet, Layer, Scope } from "effect";
 
 export type Latest<R> = {
-  run: (effect: Effect.Effect<unknown, never, R>) => void;
-  clear: () => void;
+  replace: (effect: Effect.Effect<unknown, never, R>) => void;
+  cancel: () => void;
 };
 
 export type Island<R> = {
@@ -35,8 +35,9 @@ export function startIsland<R>(layer: Layer.Layer<R>): Island<R> {
           const handle = yield* FiberHandle.make<unknown, never>();
           const start = yield* FiberHandle.runtime(handle)<R>();
           return {
-            run: (effect: Effect.Effect<unknown, never, R>) => void start(reportDefects(effect)),
-            clear: () => void Effect.runFork(FiberHandle.clear(handle)),
+            replace: (effect: Effect.Effect<unknown, never, R>) =>
+              void start(reportDefects(effect)),
+            cancel: () => void Effect.runFork(FiberHandle.clear(handle)),
           };
         }),
       ),

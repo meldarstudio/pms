@@ -1,5 +1,5 @@
 import { holdSecurityCheck, passSecurityCheck, stubPaymentScripts } from "../support/payment";
-import { expect, test } from "../support/browser-errors";
+import { expect, test } from "@playwright/test";
 
 for (const { path, provider, category, notices, field } of [
   {

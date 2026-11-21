@@ -3,6 +3,7 @@ import { type HttpClientResponse, HttpIncomingMessage } from "effect/http";
 import { useTranslations } from "@/i18n/utils";
 import {
   errorMessage,
+  pmsFailures,
   isSuccess,
   type PmsClient,
   type PmsFailure,
@@ -107,12 +108,7 @@ const complaintReceipt = (
         field: response.headers["x-error-field"] ?? null,
       }),
     );
-  }).pipe(
-    Effect.catchTags({
-      HttpClientError: () => Effect.fail(new ComplaintUnreachable()),
-      SchemaError: () => Effect.fail(new ComplaintUnreachable()),
-    }),
-  );
+  }).pipe(Effect.catchTags(pmsFailures(() => Effect.fail(new ComplaintUnreachable()))));
 
 export const readComplaintReceipt = (token: string) =>
   complaintReceipt(pmsGet("/public/complaints/receipt", { token }));

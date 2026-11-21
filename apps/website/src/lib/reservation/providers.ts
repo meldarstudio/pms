@@ -236,6 +236,7 @@ export const openCardForm = Effect.fnUntraced(function* (options: {
       };
       checkout.closeCheckout = () => resume(Effect.succeed(null));
       checkout.open();
+      return Effect.ignore(attempt(CULQI_CHECKOUT_SCRIPT, () => checkout.close()));
     } catch {
       resume(Effect.fail(new ProviderUnavailable({ provider: CULQI_CHECKOUT_SCRIPT })));
     }
@@ -347,7 +348,9 @@ export const authenticateWithBank = Effect.fnUntraced(function* (
     } catch {
       finish({ kind: "incomplete" });
     }
-    return Effect.sync(() => window.removeEventListener("message", onMessage));
+    return Effect.sync(() => window.removeEventListener("message", onMessage)).pipe(
+      Effect.andThen(Effect.ignore(attempt(CULQI_3DS_SCRIPT, () => culqi3DS.reset()))),
+    );
   });
 });
 

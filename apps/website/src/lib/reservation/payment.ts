@@ -1,6 +1,13 @@
 import { Effect, Schema } from "effect";
 import { HttpClientResponse, HttpIncomingMessage } from "effect/http";
-import { errorMessage, type PmsClient, type PmsFailure, pmsGet, pmsPost } from "@/lib/pms-client";
+import {
+  errorMessage,
+  pmsFailures,
+  type PmsClient,
+  type PmsFailure,
+  pmsGet,
+  pmsPost,
+} from "@/lib/pms-client";
 
 const paymentStates = [
   "submitted",
@@ -93,10 +100,7 @@ const paymentOutcome = (
           Effect.map(errorMessage(response), (error) => refusal(response.status, error)),
       }),
     ),
-    Effect.catchTags({
-      HttpClientError: () => Effect.succeed<PaymentOutcome>({ kind: "unavailable" }),
-      SchemaError: () => Effect.succeed<PaymentOutcome>({ kind: "unavailable" }),
-    }),
+    Effect.catchTags(pmsFailures(() => Effect.succeed<PaymentOutcome>({ kind: "unavailable" }))),
   );
 
 export const readPayment = (token: string) =>

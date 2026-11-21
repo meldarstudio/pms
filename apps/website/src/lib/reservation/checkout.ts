@@ -3,6 +3,7 @@ import { type HttpClientResponse, HttpIncomingMessage } from "effect/http";
 import type { Lang } from "@/i18n/utils";
 import {
   errorMessage,
+  pmsFailures,
   isSuccess,
   type PmsClient,
   type PmsFailure,
@@ -107,10 +108,7 @@ const checkoutOutcome = (
           }))
         : Effect.map(errorMessage(response), (error) => refusal(response.status, error)),
     ),
-    Effect.catchTags({
-      HttpClientError: () => Effect.succeed<CheckoutOutcome>({ kind: "unavailable" }),
-      SchemaError: () => Effect.succeed<CheckoutOutcome>({ kind: "unavailable" }),
-    }),
+    Effect.catchTags(pmsFailures(() => Effect.succeed<CheckoutOutcome>({ kind: "unavailable" }))),
   );
 
 export const startCheckout = (selection: CheckoutSelection, language: Lang) =>

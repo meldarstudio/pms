@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 import { HttpClientResponse, HttpIncomingMessage } from "effect/http";
-import { errorMessage, pmsGet, type PmsFailure } from "@/lib/pms-client";
+import { errorMessage, pmsFailures, pmsGet, type PmsFailure } from "@/lib/pms-client";
 import { ratePlanCodes, type StaySearch } from "./search";
 
 export const RatePlan = Schema.Literals(ratePlanCodes);
@@ -74,10 +74,7 @@ export const fetchOffers = (search: StaySearch) =>
         orElse: () => Effect.succeed<SearchOutcome>({ kind: "unavailable" }),
       }),
     ),
-    Effect.catchTags({
-      HttpClientError: () => Effect.succeed<SearchOutcome>({ kind: "unavailable" }),
-      SchemaError: () => Effect.succeed<SearchOutcome>({ kind: "unavailable" }),
-    }),
+    Effect.catchTags(pmsFailures(() => Effect.succeed<SearchOutcome>({ kind: "unavailable" }))),
   );
 
 export function lowestOffer(offers: RoomTypeOffers | undefined) {

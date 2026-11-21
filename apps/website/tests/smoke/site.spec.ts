@@ -1,4 +1,4 @@
-import { expect, test } from "../support/browser-errors";
+import { expect, test } from "@playwright/test";
 import { addDays } from "../../src/lib/reservation/search.ts";
 import { pickRangeDate } from "../support/calendar";
 import { openStay } from "../support/local-api";
