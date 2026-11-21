@@ -145,12 +145,28 @@ export function editPhone<V extends PhoneDraft>(
 ): MaskedText & { value: V } {
   const { text, caret } = deleteBesideSeparator(inputText(value), edit);
   const next = typePhone(value, text);
+  if (typedPastMaximumLength(value, next)) {
+    const kept = inputText(value);
+    return { value, text: kept, caret: formattedCaret(text, caret, kept) };
+  }
   const formatted = inputText(next);
   return {
     value: next,
     text: formatted,
     caret: formatted === text ? caret : formattedCaret(text, caret, formatted),
   };
+}
+
+function digitCount(text: string) {
+  return text.replace(/\D/g, "").length;
+}
+
+function typedPastMaximumLength(previous: PhoneDraft, next: PhoneDraft) {
+  return (
+    isPhoneSyntax(next.text) &&
+    digitCount(next.text) === digitCount(previous.text) + 1 &&
+    validatePhoneNumberLength(next.text, next.country) === "TOO_LONG"
+  );
 }
 
 function deleteBesideSeparator(previous: string, edit: PhoneEdit): MaskedText {
