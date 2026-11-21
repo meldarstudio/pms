@@ -11,7 +11,9 @@ test.beforeEach(async ({ page }) => {
 
 async function acceptTerms(page: Page) {
   await fillContact(page);
-  await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
+  const agree = page.getByRole("checkbox", { name: /Acepto las condiciones/ });
+  await agree.press("Enter");
+  await expect(agree).toBeChecked();
   await closeCardFormWithoutPaying(page, payButton(page));
 }
 
@@ -57,6 +59,15 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
   await expect(page.getByLabel("Nombre completo")).toBeFocused();
   await expect(page.getByText("Ingrese el nombre completo del contacto.")).toBeVisible();
   await expect(page.getByText("Marque la casilla para aceptar las condiciones.")).toBeVisible();
+
+  const country = page.getByRole("button", { name: /^País y código:/ });
+  const countrySearch = page.getByRole("combobox", { name: "Buscar país" });
+  await country.click();
+  await countrySearch.pressSequentially("México");
+  await page.getByRole("option", { name: "México +52" }).click();
+  await country.click();
+  await countrySearch.pressSequentially("Perú");
+  await page.getByRole("option", { name: "Perú +51" }).click();
 
   await acceptTerms(page);
   const checkout = await serverCheckout(page, request);

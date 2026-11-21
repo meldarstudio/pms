@@ -1,8 +1,5 @@
 .checkout-confirmation {
   color: var(--color-stone-900);
-  --primary: var(--color-accent-500);
-  --primary-foreground: var(--color-accent-950);
-  --ring: var(--color-accent-700);
 }
 
 .checkout-confirmation h1 {

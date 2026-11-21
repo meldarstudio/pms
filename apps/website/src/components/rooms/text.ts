@@ -1,4 +1,4 @@
-import { bookingStepsKeys } from "@/components/reservation/BookingSteps";
+import { bookingStepsKeys } from "@/components/reservation/booking-steps";
 import type { ui } from "@/i18n/ui";
 import type { useTranslations } from "@/i18n/utils";
 

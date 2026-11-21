@@ -1,10 +1,10 @@
 # Website
 
 Static Astro site for Hotel Manantial in Churín, Peru. Cloudflare serves `dist/`.
-Reservation search is always visible. `PUBLIC_PMS_API_URL` is required;
+The homepage always shows the prerendered Svelte stay search. `PUBLIC_PMS_API_URL` is required;
 `.env.development` supplies the local backend URL, and the release workflow supplies the production URL.
-Choose is the rooms page (`/habitaciones/`): one React island
-(`src/components/rooms/RoomsBooking.tsx`) with the dates-and-guests form and every
+Choose is the rooms page (`/habitaciones/`): one Svelte island
+(`src/components/rooms/RoomsBooking.svelte`) with the dates-and-guests form and every
 room, prerendered for search engines. It refreshes live offers from the PMS `/public`
 API in place, never in the HTML. A searched stay hides rooms that cannot fit the group,
 shows available rooms at their lowest total, and keeps sold-out and offline rooms visible.
@@ -15,7 +15,7 @@ Continue is off screen. The address names the stay, the opened room and its rate
 opening a room pushes history, choosing a plan or searching replaces it, and Back, Forward
 and reload show the step it names. A completed search scrolls to its notice or far enough
 to show the first available room's full price, without moving focus. The last
-search is kept in `sessionStorage` (`src/lib/reservation/draft.ts`) so the homepage
+search is kept in `sessionStorage` (`src/lib/reservation/stay-search-storage.ts`) so the homepage
 and Choose prefill it; dates before the first online arrival are dropped. Review (`/reservar/revisar/`) opens a private checkout, shows
 its server Quote, and records the booking contact's acceptance, including an
 optional note that the paid reservation keeps. Pay refreshes an
@@ -31,10 +31,10 @@ stays as completed checkout with the saved agreement, reference, authoritative
 amounts and hotel contact options. It clears the contact draft independently of
 the optional access-link read, retaining checkout credentials for outcome recovery.
 Each saved outcome reads access once; a failed or unestablished link can only be
-retried manually. Confirmed outcomes use the welcome layout in `review/Confirmation.tsx`,
+retried manually. Confirmed outcomes use the welcome layout in `review/Confirmation.svelte`,
 with explicit summary navigation and browser printing; other saved outcomes retain copying.
 Link loading is announced to assistive technology, with explanatory copy visible only on failure.
-`review/PrintConfirmation.tsx` prints the saved agreement and backend reservation amounts,
+`review/PrintConfirmation.svelte` prints the saved agreement and backend reservation amounts,
 independently of access-link availability. Print styles exclude navigation, controls and private
 links. The summary is not a wizard step and marketing pages do not link to it.
 `src/lib/rooms.ts` links each room to a PMS room-type ID; the API offers only types
@@ -54,14 +54,12 @@ again, without another card. Browser tests stub the Culqi, Culqi3DS and
 Turnstile scripts (`tests/support/payment.ts`), and the local API charges a fake Culqi and
 Turnstile served by `scripts/fake-payment-services.mjs`.
 
-Review is one React island, `src/components/reservation/review/Review.tsx`, mounted by
+Review is one Svelte island, `src/components/reservation/review/Review.svelte`, mounted by
 `ReservationReview.astro` with build-time copy (`review/text.ts`), rooms and payment keys.
 Review renders the step bar with links to completed steps, and the phone and WhatsApp booking alternatives.
-`useCheckoutFlow.ts` runs `next` in a reducer whose state carries the pending effects;
-a layout effect hands them to one runner after React commits, so `focus` effects
-(mapped to refs by `focus.ts`) find rendered elements, and the runner is disposed on
-unmount. In development `?payments=on|off` previews both payment modes
-(`paymentsPreview.tsx`).
+Review applies each `next` transition and flushes the DOM only if its effects need to
+focus an element or start the security check. It disposes the runner on unmount.
+In development `?payments=on|off` previews both payment modes.
 
 ## Content
 
@@ -76,12 +74,12 @@ Run commands from the repository root with `pnpm --filter @pms/website`.
 - Run `check` and root `pnpm check` for code changes, and `test` for the unit tests
   (`vp test run`). Review's checkout and payment decisions live in the pure
   `src/lib/reservation/checkout-flow.ts` (`next(state, event)` returns the next state
-  and effects); `checkout-runner.ts` performs the effects, and the React components in
+  and effects); `checkout-runner.ts` performs the effects, and the Svelte components in
   `src/components/reservation/review/` render the state and forward events.
 - Run `verify:build` for pages, assets, configuration, or translations. It checks
   locale parity, canonical URLs, redirects, sitemap entries, and the share image.
-- Run `test:smoke` for routes, navigation, mobile menus, stay search, Review,
-  payment, or the complaint form. It builds with `PUBLIC_PMS_API_URL` pointing
+- Run `test:smoke` for stay search, Review, payment, or the complaint form.
+  Manually check mobile menu changes. Smoke builds with `PUBLIC_PMS_API_URL` pointing
   at a local API that `scripts/local-api.mjs` starts with the backend's `cf dev`
   and a seeded D1 in `.local-api/`; it never calls production.
 - Run `exec node scripts/check-links.mjs` against a fresh build for link changes.
@@ -98,10 +96,9 @@ texts of `@pms/shared/complaint-book.json`; when the backend rejects its policy 
 guest reloads and the draft is restored. It submits only with `PUBLIC_TURNSTILE_SITE_KEY`;
 development falls back to Cloudflare's always-passing test key.
 
-`check` runs `astro sync` then `astro-check` directly. The workspace package
-extensions give the checker TypeScript 6 and its compatible WASM runtime;
-Astro's wrapper rejects the workspace's TypeScript 7, which lacks the checker's
-required programmatic API. Keep this compiler isolation when updating tooling.
+Keep `astro-check` and `svelte-check` isolated on TypeScript 6 through the workspace
+package extensions. They need the programmatic API unavailable in the workspace's
+TypeScript 7. Run `astro-check` directly because Astro's wrapper rejects TypeScript 7.
 
 ## Routes and translations
 
@@ -123,10 +120,21 @@ the English 404 page to `dist/en/404.html` for Cloudflare.
 - `src/lib/constants.ts`: contact details, map values, WhatsApp URL builder.
 - `src/constants.ts`: brand name, socials, default metadata.
 - `src/lib/rooms.ts`: room data; `src/lib/structured-data.ts`: JSON-LD.
-- Import images from `src/assets` and use `astro:assets` Image with `layout`.
+- Import images from `src/assets` and use `astro:assets` `Image` or `Picture` with `layout`.
+- Reserve the top level of `/_astro/` for fingerprinted build output. If an image
+  encoder upgrade needs to replace a cached image, change its source or transform
+  so the generated URL changes.
 - Tailwind v4 uses `@tailwindcss/vite` and `src/styles/global.css`.
 - Fonts are configured in `astro.config.mjs`, with Tailwind variables mapped
   by `@theme inline` in the global stylesheet.
+
+## UI SDK
+
+Svelte components build on `@ui-sdk/svelte`. Before using ui-sdk, follow the `ui-sdk` skill
+and read `node_modules/@ui-sdk/svelte/docs/llms.txt`. To build a new component, also search
+`node_modules/@ui-sdk/svelte/docs/core.md` by heading and read `rendering.md` next to it.
+The site does not load the SDK's `web.css` theme: style each part through its `data-slot`
+and state attributes, as `src/styles/global.css` centres dialogs.
 
 ## Agent sessions
 

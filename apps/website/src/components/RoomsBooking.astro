@@ -1,7 +1,7 @@
 ---
 import { getImage } from "astro:assets";
-import RoomsBookingIsland, { type RoomView } from "@/components/rooms/RoomsBooking";
-import type { StayDetails } from "@/components/rooms/RoomCard";
+import RoomsBookingIsland from "@/components/rooms/RoomsBooking.svelte";
+import type { RoomView, StayDetails } from "@/components/rooms/room-view";
 import { roomsBookingText } from "@/components/rooms/text";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { hotelServices, roomAmenities, type StayDetailId } from "@/lib/included";
@@ -107,7 +107,7 @@ const details: StayDetails = {
     white-space: nowrap;
   }
   @media (width < 48rem) {
-    body[data-continue-bar-space] {
+    body:has([data-continue-bar]) {
       padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
     }
   }
