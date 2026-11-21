@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick, untrack } from "svelte";
+  import { flushSync, onMount, untrack } from "svelte";
   import BookingSteps from "@/components/reservation/BookingSteps.svelte";
   import { getWhatsAppLink, phoneNumber } from "@/lib/constants";
   import { selectionKey } from "@/lib/reservation/checkout";
@@ -7,7 +7,6 @@
     checkoutSelection,
     initialState,
     next,
-    type Effect,
     type Event,
   } from "@/lib/reservation/checkout-flow";
   import {
@@ -49,7 +48,6 @@
   let root: HTMLDivElement;
   let search = $state.raw<StaySearch | null>(null);
   let checkout = $state.raw(initialState);
-  let queue = $state.raw<readonly Effect[]>([]);
   let runner: CheckoutRunner | null = null;
   let previewMode = $state<string | null>(null);
   let previewHref = $state("");
@@ -60,7 +58,11 @@
   function dispatch(event: Event) {
     const transition = next(checkout, event);
     checkout = transition.state;
-    if (transition.effects.length) queue = [...queue, ...transition.effects];
+    if (!transition.effects.length) return;
+    const pending = transition.effects;
+    if (pending.some((effect) => effect.type === "focus" || effect.type === "startSecurityCheck"))
+      flushSync();
+    runner?.run(pending);
   }
 
   onMount(() => {
@@ -107,13 +109,6 @@
       created.dispose();
       runner = null;
     };
-  });
-
-  $effect(() => {
-    const pending = queue;
-    if (!pending.length) return;
-    queue = [];
-    void tick().then(() => runner?.run(pending));
   });
 
   const room = $derived(search?.room ? (rooms[search.room] ?? null) : null);

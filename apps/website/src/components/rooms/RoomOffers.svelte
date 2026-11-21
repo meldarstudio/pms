@@ -30,7 +30,6 @@
     details,
     phase,
     choice,
-    searchReady,
     offersByType,
     onChooseDates,
     onOpenRoom,
@@ -39,7 +38,6 @@
   }: Omit<RoomsBookingProps, "apiBase"> & {
     phase: Phase;
     choice: StaySearch | null;
-    searchReady: boolean;
     offersByType: Map<string, RoomTypeOffers>;
     onChooseDates: () => void;
     onOpenRoom: (room: RoomId) => void;
@@ -47,7 +45,6 @@
     onPlan: (plan: RatePlanCode) => void;
   } = $props();
 
-  let section: HTMLElement;
   const roomId = $derived(choice?.plan ? choice.room : null);
   const ratesLoading = $derived(phase.kind === "loading" && roomId !== null);
   const room = $derived(rooms.find((item) => item.id === roomId));
@@ -60,15 +57,9 @@
     phase.kind === "found" && offers?.availability === "available" && selected !== undefined,
   );
 
-  $effect(() => {
-    if (!searchReady) return;
-    const booking = section.closest("[data-rooms-booking]");
-    booking?.removeAttribute("data-resume-rates");
-    booking?.removeAttribute("data-searched");
-  });
 </script>
 
-<section bind:this={section} class="bg-stone-100">
+<section class="bg-stone-100">
   <div class="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-8 md:px-8 md:py-12">
     {#if phase.kind === "idle" || ratesLoading}
       <div data-rate-loading class={ratesLoading ? undefined : "hidden"}>

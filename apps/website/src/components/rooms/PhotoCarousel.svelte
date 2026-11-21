@@ -10,6 +10,7 @@
     CarouselViewport,
     createCarouselController,
   } from "@ui-sdk/svelte/carousel";
+  import { SvelteSet } from "svelte/reactivity";
   import { DialogClose } from "@ui-sdk/svelte/dialog";
   import { fill } from "@/lib/reservation/format";
   import RoomIcon from "./RoomIcon.svelte";
@@ -39,7 +40,7 @@
   } = $props();
 
   let selected = $state<number>();
-  let loaded = $state.raw(new Set<number>());
+  let loaded = new SvelteSet<number>();
   const page = $derived(selected ?? start);
   const current = $derived(photos[page - 1]);
   const position = (page: number) => `${page} ${text["rooms.gallery.of"]} ${photos.length}`;
@@ -47,7 +48,7 @@
     "absolute top-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer size-11 bg-black/50 text-white hover:bg-black/70 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-0 pointer-fine:opacity-0 pointer-fine:pointer-events-none pointer-fine:group-hover:opacity-100 pointer-fine:group-hover:pointer-events-auto pointer-fine:focus-visible:opacity-100 pointer-fine:focus-visible:pointer-events-auto";
 
   function reveal(page: number) {
-    if (!loaded.has(page)) loaded = new Set([...loaded, page]);
+    loaded.add(page);
   }
 
   function watchSlide(element: HTMLElement, page: number) {

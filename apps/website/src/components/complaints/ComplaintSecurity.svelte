@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { Button } from "@ui-sdk/svelte/button";
   import { useTranslations, type Lang } from "@/i18n/utils";
   import { renderSecurityCheck, type SecurityCheck } from "@/lib/reservation/providers";
@@ -15,21 +14,20 @@
   } = $props();
 
   const t = $derived(useTranslations(language));
-  let widthProbe: HTMLDivElement;
   let container = $state<HTMLDivElement>();
   let compact = $state<boolean | null>(null);
   let failed = $state(false);
   let attempt = $state(0);
 
-  onMount(() => {
+  function watchWidth(node: HTMLDivElement) {
     const measure = () => {
-      compact = widthProbe.clientWidth < 300;
+      compact = node.clientWidth < 300;
     };
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(widthProbe);
+    observer.observe(node);
     return () => observer.disconnect();
-  });
+  }
 
   $effect(() => {
     if (!siteKey || !container || compact === null) return;
@@ -73,7 +71,7 @@
 </script>
 
 <div class="flex w-full flex-col gap-3" role="group" aria-label={t("complaints.securityCheck")}>
-  <div bind:this={widthProbe}>
+  <div {@attach watchWidth}>
     {#key attempt}<div bind:this={container}></div>{/key}
   </div>
   {#if !siteKey || failed}

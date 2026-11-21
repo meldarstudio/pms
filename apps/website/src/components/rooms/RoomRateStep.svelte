@@ -6,7 +6,7 @@
     AccordionPanel,
     AccordionTrigger,
   } from "@ui-sdk/svelte/accordion";
-  import { onMount, type Snippet } from "svelte";
+  import type { Snippet } from "svelte";
   import { guestSummary } from "@/components/stay-search/stay-search";
   import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
   import type { PlanOffer } from "@/lib/reservation/offers";
@@ -53,10 +53,9 @@
     }),
   );
   const photo = $derived(room.photos[0]);
-  let summaryContinue: HTMLAnchorElement;
   let summaryContinueInView = $state(false);
 
-  onMount(() => {
+  function watchSummaryContinue(node: HTMLElement) {
     const header = document.querySelector("navigation-menu")?.getBoundingClientRect().height ?? 0;
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -65,13 +64,13 @@
       },
       { rootMargin: `-${Math.ceil(header)}px 0px 0px 0px`, threshold: [0, 1] },
     );
-    observer.observe(summaryContinue);
+    observer.observe(node);
     document.body.setAttribute("data-continue-bar-space", "");
     return () => {
       observer.disconnect();
       document.body.removeAttribute("data-continue-bar-space");
     };
-  });
+  }
 </script>
 
 {#snippet payments(offer: PlanOffer)}
@@ -234,7 +233,7 @@
           {say("reservation.offer.taxes", { currency: phase.result.currency })}
         </p>
         <a
-          bind:this={summaryContinue}
+          {@attach watchSummaryContinue}
           class={`mt-4 w-full ${primary}`}
           href={continueHref}
           aria-label={continueLabel}

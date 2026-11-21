@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import StaySearchForm from "@/components/stay-search/StaySearchForm.svelte";
   import { fill, formatList } from "@/lib/reservation/format";
   import { fetchOffers, lowestOffer, type OfferSearchResult } from "@/lib/reservation/offers";
@@ -45,8 +45,8 @@
 
   let address = $state.raw<StaySearch | null>(null);
   let phase = $state.raw<Phase>({ kind: "idle" });
-  let searchReady = $state(false);
-  let formKey = $state(0);
+  let stayForm: { replaceStay: (stay: StaySearch) => void } | undefined;
+  let root: HTMLDivElement;
   let loaded: { search: StaySearch; result: OfferSearchResult | null } | null = null;
   let request: AbortController | null = null;
   let pendingFocus: PendingFocus = null;
@@ -205,11 +205,15 @@
   onMount(() => {
     const roomIds = rooms.map((room) => room.id);
     search(resumeSearch(new URLSearchParams(location.search), roomIds));
-    searchReady = true;
+    void tick().then(() => {
+      const booking = root.closest("[data-rooms-booking]");
+      booking?.removeAttribute("data-resume-rates");
+      booking?.removeAttribute("data-searched");
+    });
     const onPopState = () => {
       const next = readSearch(new URLSearchParams(location.search), roomIds);
       if (address && sameAddress(address, next)) return;
-      if (address && !sameStay(address, next)) formKey += 1;
+      if (address && !sameStay(address, next)) stayForm?.replaceStay(next);
       show(next, "none", false);
     };
     window.addEventListener("popstate", onPopState);
@@ -288,16 +292,15 @@
   }
 </script>
 
-<div class="bg-stone-100">
+<div bind:this={root} class="bg-stone-100">
   <div class="mx-auto max-w-7xl px-4 pb-2 md:px-8">
     <div id="availability" class="scroll-offset">
-      {#key formKey}
-        <StaySearchForm
-          {lang}
-          copy={searchCopy}
-          onSearch={(next) => search({ ...next, room: preferred, plan: address?.plan ?? null })}
-        />
-      {/key}
+      <StaySearchForm
+        bind:this={stayForm}
+        {lang}
+        copy={searchCopy}
+        onSearch={(next) => search({ ...next, room: preferred, plan: address?.plan ?? null })}
+      />
     </div>
     <p
       data-search-status
@@ -352,7 +355,6 @@
   {details}
   {phase}
   choice={address}
-  {searchReady}
   {offersByType}
   onChooseDates={chooseDates}
   onOpenRoom={openRoom}

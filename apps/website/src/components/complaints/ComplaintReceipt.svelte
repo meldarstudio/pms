@@ -1,13 +1,10 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { Button } from "@ui-sdk/svelte/button";
   import { useTranslations, type Lang } from "@/i18n/utils";
   import { complaintLabels, type ComplaintReceipt as Receipt } from "@/lib/complaints";
   import type { Snippet } from "svelte";
 
   let { sheet, language }: { sheet: Receipt; language: Lang } = $props();
-  let heading: HTMLHeadingElement;
-  onMount(() => heading.focus());
   const t = $derived(useTranslations(language));
   const labels = $derived(complaintLabels(language));
   const dates = $derived(
@@ -57,7 +54,7 @@
 <article class="complaint-sheet flex flex-col gap-4">
   <header class="flex flex-col gap-1">
     <p class="font-semibold uppercase">Libro de Reclamaciones</p>
-    <h2 bind:this={heading} tabindex="-1" class="text-2xl font-semibold">
+    <h2 {@attach (node) => node.focus()} tabindex="-1" class="text-2xl font-semibold">
       {t("complaints.sheet.title")}
       {t("complaints.sheet.number")}
       {sheet.reference}

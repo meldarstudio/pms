@@ -77,13 +77,16 @@ export const calendarCopy = {
   },
 };
 
-export function restoreSearch() {
-  const search = resumeSearch(new URLSearchParams(window.location.search), []);
+export function shownSearch(search: StaySearch) {
   return {
     ...search,
     adults: Math.min(search.adults, MAX_ADULTS_CHOICE),
     children: Math.min(search.children, MAX_CHILDREN_CHOICE),
   };
+}
+
+export function restoreSearch() {
+  return shownSearch(resumeSearch(new URLSearchParams(window.location.search), []));
 }
 
 export function guestSummary(

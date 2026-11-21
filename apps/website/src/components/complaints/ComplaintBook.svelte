@@ -90,7 +90,7 @@
   }
 
   const typedBeforeHydration = inputTypedBeforeHydration();
-  let draft = $state.raw<Draft>({
+  let draft = $state<Draft>({
     token: "",
     input: { ...emptyInput(), ...typedBeforeHydration },
     attempted: false,
@@ -186,7 +186,8 @@
 
   function update<Key extends keyof ComplaintInput>(key: Key, value: ComplaintInput[Key]) {
     if (!ready || fieldsDisabled) return;
-    remember({ ...draft, input: { ...draft.input, [key]: value } });
+    draft.input[key] = value;
+    sessionStorage.setItem(storageKey, JSON.stringify($state.snapshot(draft)));
   }
 
   async function submit(event: SubmitEvent) {
@@ -251,8 +252,8 @@
         rows={key === "product" ? 2 : 4}
         aria-invalid={invalid === key}
         aria-describedby={describedBy}
-        value={draft.input[key]}
-        oninput={(event) => update(key, event.currentTarget.value)}></textarea>
+        bind:value={() => draft.input[key], (value) => update(key, value)}
+      ></textarea>
     {:else}
       <input
         {id}
@@ -261,8 +262,7 @@
         maxlength={limits[key]}
         aria-invalid={invalid === key}
         aria-describedby={describedBy}
-        value={draft.input[key]}
-        oninput={(event) => update(key, event.currentTarget.value)}
+        bind:value={() => draft.input[key], (value) => update(key, value)}
       />
     {/if}
     {#if key === "reservationReference"}
@@ -305,8 +305,7 @@
             <input
               id="complaint-minor"
               type="checkbox"
-              checked={draft.input.minor}
-              onchange={(event) => update("minor", event.currentTarget.checked)}
+              bind:checked={() => draft.input.minor, (checked) => update("minor", checked)}
             />
             <label for="complaint-minor">{labels.minor}</label>
           </div>
@@ -320,10 +319,11 @@
             <label for="complaint-category">{labels.category}</label>
             <select
               id="complaint-category"
-              value={draft.input.category}
               aria-describedby="complaint-category-reclamo complaint-category-queja"
-              onchange={(event) =>
-                update("category", event.currentTarget.value === "queja" ? "queja" : "reclamo")}
+              bind:value={
+                () => draft.input.category,
+                (value) => update("category", value === "queja" ? "queja" : "reclamo")
+              }
             >
               <option value="reclamo">Reclamo</option>
               <option value="queja">Queja</option>
@@ -369,12 +369,10 @@
             <label for="complaint-responseChannel">{labels.responseChannel}</label>
             <select
               id="complaint-responseChannel"
-              value={draft.input.responseChannel}
-              onchange={(event) =>
-                update(
-                  "responseChannel",
-                  event.currentTarget.value === "letter" ? "letter" : "email",
-                )}
+              bind:value={
+                () => draft.input.responseChannel,
+                (value) => update("responseChannel", value === "letter" ? "letter" : "email")
+              }
             >
               <option value="email">{t("complaints.email")}</option>
               <option value="letter">{t("complaints.letterToTheAddressProvided")}</option>

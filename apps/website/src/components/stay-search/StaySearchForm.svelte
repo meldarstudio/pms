@@ -1,6 +1,7 @@
 <script lang="ts">
   import "./stay-search.css";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import { MediaQuery } from "svelte/reactivity";
   import {
     Calendar,
     CalendarDay,
@@ -39,6 +40,7 @@
     rangePoint,
     restoreSearch,
     selectDate,
+    shownSearch,
     selectedStayDates,
     stayProblems,
     submitSearch,
@@ -47,30 +49,44 @@
     type StaySearchProps,
   } from "./stay-search";
   import { wideScreen } from "@/lib/screen";
+  import type { StaySearch } from "@/lib/reservation/search";
 
   let { action, onSearch, lang, copy }: StaySearchProps = $props();
   const datePopup = createPopoverController<DateField>();
   const guestPopup = createPopoverController();
+  const wide = new MediaQuery(wideScreen, true);
   let search = $state({ ...initialSearch });
   let ready = $state(false);
-  let mobile = $state(false);
   let picker = $state<DatePicker>();
   let showProblems = $state(false);
+  const mobile = $derived(!wide.current);
   const labels = $derived(calendarCopy[lang]);
   const selectedDates = $derived(selectedStayDates(search));
+
+  export function replaceStay(stay: StaySearch) {
+    datePopup.close();
+    guestPopup.close();
+    picker = undefined;
+    showProblems = false;
+    search = shownSearch(stay);
+  }
 
   onMount(() => {
     search = restoreSearch();
     ready = true;
-    const media = matchMedia(wideScreen);
-    const resize = () => {
+  });
+
+  let mediaReady = false;
+  $effect(() => {
+    mobile;
+    if (!mediaReady) {
+      mediaReady = true;
+      return;
+    }
+    untrack(() => {
       datePopup.close();
       guestPopup.close();
-      mobile = !media.matches;
-    };
-    mobile = !media.matches;
-    media.addEventListener("change", resize);
-    return () => media.removeEventListener("change", resize);
+    });
   });
 
   function chooseToggledDate(value: CalendarValue) {
