@@ -1,4 +1,14 @@
+import { Data, Effect, Schema } from "effect";
+import { type HttpClientResponse, HttpIncomingMessage } from "effect/http";
 import { useTranslations } from "@/i18n/utils";
+import {
+  errorMessage,
+  isSuccess,
+  type PmsClient,
+  type PmsFailure,
+  pmsGet,
+  pmsPost,
+} from "@/lib/pms-client";
 
 export type ComplaintInput = {
   language: "es" | "en";
@@ -27,23 +37,89 @@ export type ComplaintConfig = {
   privacyInformation: Record<"es" | "en", string>;
   policyVersion: string;
 };
-export type ComplaintReceipt = {
-  id: string;
-  bookId: string;
-  reference: string;
-  establishmentId: string;
-  provider: ComplaintConfig["provider"];
-  filedAt: string;
-  registeredAt: string;
-  dueDate: string;
-  timeZone: string;
-  currency: string;
-  source: string;
-  originalReference: string | null;
-  input: ComplaintInput;
-  email: { status: "pending" | "sent" | "failed" | "not_requested" };
-  responses: unknown[];
-};
+
+const ComplaintProvider = Schema.Struct({
+  legalName: Schema.String,
+  ruc: Schema.String,
+  address: Schema.String,
+});
+
+const RecordedComplaintInput = Schema.Struct({
+  language: Schema.Literals(["es", "en"]),
+  fullName: Schema.String,
+  address: Schema.String,
+  documentType: Schema.String,
+  documentNumber: Schema.String,
+  phone: Schema.String,
+  email: Schema.String,
+  minor: Schema.Boolean,
+  representative: Schema.String,
+  product: Schema.String,
+  amountCents: Schema.NullOr(Schema.Number),
+  category: Schema.Literals(["reclamo", "queja"]),
+  description: Schema.String,
+  requestedRemedy: Schema.String,
+  reservationReference: Schema.String,
+  responseChannel: Schema.Literals(["email", "letter"]),
+  policyVersion: Schema.String,
+});
+
+const ComplaintReceipt = Schema.Struct({
+  id: Schema.String,
+  bookId: Schema.String,
+  reference: Schema.String,
+  establishmentId: Schema.String,
+  provider: ComplaintProvider,
+  filedAt: Schema.String,
+  registeredAt: Schema.String,
+  dueDate: Schema.String,
+  timeZone: Schema.String,
+  currency: Schema.String,
+  source: Schema.String,
+  originalReference: Schema.NullOr(Schema.String),
+  input: RecordedComplaintInput,
+  email: Schema.Struct({ status: Schema.Literals(["pending", "sent", "failed", "not_requested"]) }),
+  responses: Schema.Array(Schema.Unknown),
+});
+export type ComplaintReceipt = typeof ComplaintReceipt.Type;
+
+const decodeReceipt = HttpIncomingMessage.schemaBodyJson(ComplaintReceipt);
+
+export class ComplaintRejected extends Data.TaggedError("ComplaintRejected")<{
+  status: number;
+  code: string | null;
+  field: string | null;
+}> {}
+
+export class ComplaintUnreachable extends Data.TaggedError("ComplaintUnreachable") {}
+
+const complaintReceipt = (
+  exchange: Effect.Effect<HttpClientResponse.HttpClientResponse, PmsFailure, PmsClient>,
+): Effect.Effect<ComplaintReceipt, ComplaintRejected | ComplaintUnreachable, PmsClient> =>
+  Effect.gen(function* () {
+    const response = yield* exchange;
+    if (isSuccess(response)) return yield* decodeReceipt(response);
+    if ((yield* response.json) === null) return yield* Effect.fail(new ComplaintUnreachable());
+    return yield* Effect.fail(
+      new ComplaintRejected({
+        status: response.status,
+        code: yield* errorMessage(response),
+        field: response.headers["x-error-field"] ?? null,
+      }),
+    );
+  }).pipe(
+    Effect.catchTags({
+      HttpClientError: () => Effect.fail(new ComplaintUnreachable()),
+      SchemaError: () => Effect.fail(new ComplaintUnreachable()),
+    }),
+  );
+
+export const readComplaintReceipt = (token: string) =>
+  complaintReceipt(pmsGet("/public/complaints/receipt", { token }));
+
+export const fileComplaint = (token: string, submission: ComplaintSubmission) =>
+  complaintReceipt(pmsPost("/public/complaints", { token, body: submission }));
+
 export function complaintLabels(language: "es" | "en") {
   const t = useTranslations(language);
   return {

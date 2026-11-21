@@ -1,8 +1,16 @@
 <script lang="ts">
+  import { Effect } from "effect";
   import { onMount, tick, untrack } from "svelte";
   import StaySearchForm from "@/components/stay-search/StaySearchForm.svelte";
   import { fill, formatList } from "@/lib/reservation/format";
-  import { fetchOffers, lowestOffer, type OfferSearchResult } from "@/lib/reservation/offers";
+  import { startIsland, type Latest } from "@/lib/island";
+  import { PmsClient } from "@/lib/pms-client";
+  import {
+    fetchOffers,
+    lowestOffer,
+    type OfferSearchResult,
+    type SearchOutcome,
+  } from "@/lib/reservation/offers";
   import {
     readSearch,
     searchParams,
@@ -47,7 +55,7 @@
   let stayForm: { replaceStay: (stay: StaySearch) => void } | undefined;
   let root: HTMLDivElement;
   let loaded: { search: StaySearch; result: OfferSearchResult | null } | null = null;
-  let request: AbortController | null = null;
+  let offerSearch: Latest<PmsClient> | null = null;
   let pendingFocus: PendingFocus = null;
   let pendingPosition = false;
   let problemPanel = $state<HTMLDivElement>();
@@ -142,13 +150,15 @@
     else if (write === "replace") history.replaceState(history.state, "", url);
   }
 
-  async function load(next: StaySearch) {
-    request?.abort();
-    const controller = (request = new AbortController());
+  function load(next: StaySearch) {
     loaded = { search: next, result: null };
     phase = { kind: "loading", search: next, previous: result };
-    const outcome = await fetchOffers(apiBase, next, controller.signal).catch(() => null);
-    if (!outcome || controller.signal.aborted) return;
+    offerSearch?.run(
+      Effect.flatMap(fetchOffers(next), (outcome) => Effect.sync(() => receive(next, outcome))),
+    );
+  }
+
+  function receive(next: StaySearch, outcome: SearchOutcome) {
     if (outcome.kind === "found") {
       loaded = { search: next, result: outcome.result };
       const shown = address ?? next;
@@ -177,7 +187,7 @@
 
   function show(next: StaySearch, write: HistoryWrite, fresh: boolean) {
     if (!next.checkIn || !next.checkOut) {
-      request?.abort();
+      offerSearch?.clear();
       loaded = null;
       pendingFocus = null;
       pendingPosition = false;
@@ -193,7 +203,7 @@
       return;
     }
     commit(next, write);
-    void load(next);
+    load(next);
   }
 
   function search(next: StaySearch) {
@@ -202,6 +212,8 @@
   }
 
   onMount(() => {
+    const island = startIsland(PmsClient.layer(apiBase));
+    offerSearch = island.latest();
     const roomIds = rooms.map((room) => room.id);
     search(resumeSearch(new URLSearchParams(location.search), roomIds));
     void tick().then(() => {
@@ -218,7 +230,8 @@
     window.addEventListener("popstate", onPopState);
     return () => {
       window.removeEventListener("popstate", onPopState);
-      request?.abort();
+      offerSearch = null;
+      island.dispose();
     };
   });
 

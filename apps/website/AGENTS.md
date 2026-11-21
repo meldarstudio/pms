@@ -18,6 +18,11 @@ release workflow supplies the production URL.
 - Keep checkout and card tokens in `sessionStorage`, not in URLs (`src/lib/reservation/draft.ts`).
   The private summary (`/reservar/resumen/`) uses a separate bearer in the URL fragment only
   (`src/lib/reservation/summary.ts`). Keep it out of query strings and support links.
+- Browser workflows run on Effect v4. Islands fork them through `startIsland` (`src/lib/island.ts`),
+  which interrupts them on unmount, and call the PMS only through `PmsClient` (`src/lib/pms-client.ts`).
+  It turns off Effect's `traceparent`/`b3` headers, which the backend's CORS allow-list rejects.
+  `pmsGet` times out and retries network failures; `pmsPost` sends once, so never route a write
+  through the retrying client: a retried payment or acceptance could be applied twice.
 - Card payment needs build-time `PUBLIC_CULQI_PUBLIC_KEY` and `PUBLIC_TURNSTILE_SITE_KEY`;
   without either, Review says payment isn't available. In development `?payments=on|off`
   previews both modes.

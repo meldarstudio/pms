@@ -1,27 +1,18 @@
-export type PaymentState =
-  | "submitted"
-  | "authentication_required"
-  | "declined"
-  | "processing"
-  | "paid_awaiting_reservation"
-  | "unfulfilled"
-  | "confirmed"
-  | "reservation_changed";
+import { Effect, Schema } from "effect";
+import { HttpClientResponse, HttpIncomingMessage } from "effect/http";
+import { errorMessage, type PmsClient, type PmsFailure, pmsGet, pmsPost } from "@/lib/pms-client";
 
-export type GuestPayment = {
-  attemptId: string;
-  state: PaymentState;
-  declineReason?: "authentication_expired";
-  amountCents: number;
-  currency: string;
-  delayed: boolean;
-  reservation: {
-    code: string;
-    paidCents: number;
-    outstandingCents: number;
-    refundDueCents: number;
-  } | null;
-};
+const paymentStates = [
+  "submitted",
+  "authentication_required",
+  "declined",
+  "processing",
+  "paid_awaiting_reservation",
+  "unfulfilled",
+  "confirmed",
+  "reservation_changed",
+] as const;
+export type PaymentState = (typeof paymentStates)[number];
 
 export type PaymentOutcome =
   | { kind: "payment"; payment: GuestPayment | null; created: boolean }
@@ -50,59 +41,68 @@ const SECURITY_UNAVAILABLE = new Set([
   "payment security check is required",
 ]);
 
-function isPaymentBody(value: unknown): value is { payment: GuestPayment | null } {
-  if (typeof value !== "object" || value === null || !("payment" in value)) return false;
-  const { payment } = value as { payment: unknown };
-  return (
-    payment === null ||
-    (typeof payment === "object" && typeof (payment as GuestPayment).state === "string")
-  );
-}
+const GuestPayment = Schema.Struct({
+  attemptId: Schema.String,
+  state: Schema.Literals(paymentStates),
+  declineReason: Schema.optionalKey(Schema.Literal("authentication_expired")),
+  amountCents: Schema.Number,
+  currency: Schema.String,
+  delayed: Schema.Boolean,
+  reservation: Schema.NullOr(
+    Schema.Struct({
+      code: Schema.String,
+      paidCents: Schema.Number,
+      outstandingCents: Schema.Number,
+      refundDueCents: Schema.Number,
+    }),
+  ),
+});
+export type GuestPayment = typeof GuestPayment.Type;
 
-async function call(
-  apiBase: string,
-  path: string,
-  init: { method: "GET" | "POST"; token: string; body?: unknown },
-): Promise<PaymentOutcome> {
-  const url = new URL(path, apiBase.endsWith("/") ? apiBase : `${apiBase}/`);
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: init.method,
-      credentials: "omit",
-      referrerPolicy: "no-referrer",
-      headers: {
-        accept: "application/json",
-        authorization: `Bearer ${init.token}`,
-        ...(init.body === undefined ? {} : { "content-type": "application/json" }),
-      },
-      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-    });
-  } catch {
-    return { kind: "unavailable" };
-  }
-  if (response.status === 401) return { kind: "denied" };
-  const body: unknown = await response.json().catch(() => null);
-  const error = (body as { error?: unknown } | null)?.error;
-  if (response.ok && isPaymentBody(body))
-    return { kind: "payment", payment: body.payment, created: response.status === 201 };
-  if (response.status === 429) return { kind: "throttled" };
-  if (typeof error !== "string") return { kind: "unavailable" };
+const decodePaymentBody = HttpIncomingMessage.schemaBodyJson(
+  Schema.Struct({ payment: Schema.NullOr(GuestPayment) }),
+);
+
+const refusal = (status: number, error: string | null): PaymentOutcome => {
+  if (status === 429) return { kind: "throttled" };
+  if (error === null) return { kind: "unavailable" };
   if (error === "online payments are paused") return { kind: "paused" };
   if (error === "payment security check failed") return { kind: "security_failed" };
   if (SECURITY_UNAVAILABLE.has(error)) return { kind: "security_unavailable" };
   if (error === "quote has expired") return { kind: "expired" };
   if (REPLACED_QUOTE.has(error)) return { kind: "replaced" };
-  if (response.status === 409 && error === "no availability") return { kind: "sold_out" };
-  if (response.status === 400) return { kind: "invalid", error };
+  if (status === 409 && error === "no availability") return { kind: "sold_out" };
+  if (status === 400) return { kind: "invalid", error };
   return { kind: "unavailable" };
-}
+};
 
-export const readPayment = (apiBase: string, token: string) =>
-  call(apiBase, "public/checkout/payment", { method: "GET", token });
+const paymentOutcome = (
+  exchange: Effect.Effect<HttpClientResponse.HttpClientResponse, PmsFailure, PmsClient>,
+): Effect.Effect<PaymentOutcome, never, PmsClient> =>
+  exchange.pipe(
+    Effect.flatMap(
+      HttpClientResponse.matchStatus({
+        401: () => Effect.succeed<PaymentOutcome>({ kind: "denied" }),
+        "2xx": (response): Effect.Effect<PaymentOutcome, PmsFailure> =>
+          Effect.map(decodePaymentBody(response), ({ payment }) => ({
+            kind: "payment",
+            payment,
+            created: response.status === 201,
+          })),
+        orElse: (response) =>
+          Effect.map(errorMessage(response), (error) => refusal(response.status, error)),
+      }),
+    ),
+    Effect.catchTags({
+      HttpClientError: () => Effect.succeed<PaymentOutcome>({ kind: "unavailable" }),
+      SchemaError: () => Effect.succeed<PaymentOutcome>({ kind: "unavailable" }),
+    }),
+  );
+
+export const readPayment = (token: string) =>
+  paymentOutcome(pmsGet("/public/checkout/payment", { token }));
 
 export const startPayment = (
-  apiBase: string,
   token: string,
   payment: {
     quoteId: string;
@@ -111,19 +111,19 @@ export const startPayment = (
     deviceFingerprint?: string;
   },
 ) =>
-  call(apiBase, "public/checkout/payments", {
-    method: "POST",
-    token,
-    body: {
-      quoteId: payment.quoteId,
-      sourceId: payment.sourceId,
-      turnstileToken: payment.turnstileToken,
-      ...(payment.deviceFingerprint ? { deviceFingerprint: payment.deviceFingerprint } : {}),
-    },
-  });
+  paymentOutcome(
+    pmsPost("/public/checkout/payments", {
+      token,
+      body: {
+        quoteId: payment.quoteId,
+        sourceId: payment.sourceId,
+        turnstileToken: payment.turnstileToken,
+        ...(payment.deviceFingerprint ? { deviceFingerprint: payment.deviceFingerprint } : {}),
+      },
+    }),
+  );
 
 export const continuePayment = (
-  apiBase: string,
   token: string,
   authentication: {
     attemptId: string;
@@ -134,15 +134,11 @@ export const continuePayment = (
     directoryServerTransactionId: string;
   },
 ) =>
-  call(apiBase, "public/checkout/payment/authentication", {
-    method: "POST",
-    token,
-    body: authentication,
-  });
+  paymentOutcome(
+    pmsPost("/public/checkout/payment/authentication", { token, body: authentication }),
+  );
 
-export const reportAuthenticationFailure = (apiBase: string, token: string, attemptId: string) =>
-  call(apiBase, "public/checkout/payment/authentication/failure", {
-    method: "POST",
-    token,
-    body: { attemptId },
-  });
+export const reportAuthenticationFailure = (token: string, attemptId: string) =>
+  paymentOutcome(
+    pmsPost("/public/checkout/payment/authentication/failure", { token, body: { attemptId } }),
+  );

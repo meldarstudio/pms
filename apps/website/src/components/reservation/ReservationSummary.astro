@@ -122,9 +122,17 @@ const link =
 </section>
 
 <script>
+  import { Effect } from "effect";
   import type { Lang } from "@/i18n/utils";
+  import { copyText } from "@/lib/clipboard";
+  import { startIsland, type Island, type Latest } from "@/lib/island";
+  import { PmsClient } from "@/lib/pms-client";
   import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
-  import { readReservationSummary, type GuestReservationSummary } from "@/lib/reservation/summary";
+  import {
+    readReservationSummary,
+    type GuestReservationSummary,
+    type SummaryOutcome,
+  } from "@/lib/reservation/summary";
   import { cancellationNodes } from "@/lib/reservation/terms";
 
   type Copy = {
@@ -146,30 +154,33 @@ const link =
   class ReservationSummary extends HTMLElement {
     private copy!: Copy;
 
-    private requestId = 0;
+    private island?: Island<PmsClient>;
+    private reading?: Latest<PmsClient>;
     private pendingToken: string | null = null;
     private lastFoundToken: string | null = null;
     private unavailable = false;
     private listeners?: AbortController;
-    private readonly openCurrent = () => void this.open();
+    private readonly openCurrent = () => this.open();
     private readonly pageShown = (event: PageTransitionEvent) => {
-      if (event.persisted) void this.open();
+      if (event.persisted) this.open();
     };
     private readonly pageHidden = () => {
-      this.requestId++;
+      this.reading?.clear();
       this.pendingToken = null;
     };
     private readonly online = () => {
-      if (this.unavailable) void this.open();
+      if (this.unavailable) this.open();
     };
 
     connectedCallback() {
       this.copy = JSON.parse(this.querySelector("[data-copy]")?.textContent ?? "{}") as Copy;
+      this.island = startIsland(PmsClient.layer(this.copy.apiBase));
+      this.reading = this.island.latest();
       this.listeners = new AbortController();
       const options = { signal: this.listeners.signal };
       this.querySelector("[data-copy-link]")?.addEventListener(
         "click",
-        () => void this.copyLink(),
+        () => this.copyLink(),
         options,
       );
       this.querySelector("[data-retry]")?.addEventListener("click", this.openCurrent, options);
@@ -177,12 +188,13 @@ const link =
       window.addEventListener("pagehide", this.pageHidden, options);
       window.addEventListener("hashchange", this.openCurrent, options);
       window.addEventListener("online", this.online, options);
-      void this.open();
+      this.open();
     }
 
     disconnectedCallback() {
       this.listeners?.abort();
       this.pageHidden();
+      this.island?.dispose();
     }
 
     private text(key: string, values: Record<string, string | number> = {}) {
@@ -193,21 +205,22 @@ const link =
       return this.text(`${key}.${count === 1 ? "one" : "other"}`, { count });
     }
 
-    private async open() {
+    private open() {
       const token = window.location.hash.slice(1);
       if (this.pendingToken === token) return;
-      const requestId = ++this.requestId;
       this.pendingToken = token;
       if (this.lastFoundToken !== token) this.lastFoundToken = null;
       this.clearPrivate();
       this.show("loading");
-      const outcome = await readReservationSummary(this.copy.apiBase, token);
-      if (
-        !this.isConnected ||
-        requestId !== this.requestId ||
-        window.location.hash.slice(1) !== token
-      )
-        return;
+      this.reading?.run(
+        Effect.flatMap(readReservationSummary(token), (outcome) =>
+          Effect.sync(() => this.received(token, outcome)),
+        ),
+      );
+    }
+
+    private received(token: string, outcome: SummaryOutcome) {
+      if (!this.isConnected || window.location.hash.slice(1) !== token) return;
       this.pendingToken = null;
       if (outcome.kind === "found") {
         this.render(outcome.summary);
@@ -370,14 +383,13 @@ const link =
       return article;
     }
 
-    private async copyLink() {
+    private copyLink() {
       const feedback = this.querySelector<HTMLElement>("[data-copied]");
-      try {
-        await navigator.clipboard.writeText(window.location.href);
-        if (feedback) feedback.hidden = false;
-      } catch {
-        if (feedback) feedback.hidden = true;
-      }
+      this.island?.fork(
+        Effect.map(copyText(window.location.href), (copied) => {
+          if (feedback) feedback.hidden = !copied;
+        }),
+      );
     }
   }
 

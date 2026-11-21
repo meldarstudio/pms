@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../support/browser-errors";
 import { pickRangeDate } from "../support/calendar";
 import { selectRoomRate } from "../support/room-rate";
 import {

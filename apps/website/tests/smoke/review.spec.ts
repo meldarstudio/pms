@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../support/browser-errors";
 import { fillContact, payButton, reviewPath, serverCheckout } from "../support/checkout";
 import { daysFromToday, doubleSoldOutStay, openStay } from "../support/local-api";
 import { closeCardFormWithoutPaying, stubPaymentScripts, useOwnSourceIp } from "../support/payment";

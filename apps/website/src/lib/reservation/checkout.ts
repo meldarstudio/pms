@@ -1,5 +1,15 @@
+import { Effect, Schema } from "effect";
+import { type HttpClientResponse, HttpIncomingMessage } from "effect/http";
 import type { Lang } from "@/i18n/utils";
-import type { FreeCancellation } from "./offers";
+import {
+  errorMessage,
+  isSuccess,
+  type PmsClient,
+  type PmsFailure,
+  pmsGet,
+  pmsPost,
+} from "@/lib/pms-client";
+import { Cancellation, RatePlan } from "./offers";
 import type { PhoneDraft } from "@pms/shared/phone";
 import type { RatePlanCode } from "./search";
 
@@ -30,26 +40,33 @@ export type ContactDraft = {
   notes: string;
 };
 
-export type CheckoutView = CheckoutSelection & {
-  nights: number;
-  language: Lang;
-  currency: string;
-  quote: {
-    id: string;
-    expired: boolean;
-    expiresAt: string;
-    nights: { date: string; priceCents: number }[];
-    totalCents: number;
-    requiredInitialPaymentCents: number;
-    remainingScheduledCents: number;
-    cancellation: {
-      freeCancellation: FreeCancellation;
-      freeUntil: string | null;
-      chargeCents: number;
-    };
-  };
-  acceptance: { quoteId: string; acceptedAt: string } | null;
-};
+const CheckoutView = Schema.Struct({
+  roomTypeId: Schema.String,
+  checkIn: Schema.String,
+  checkOut: Schema.String,
+  adults: Schema.Number,
+  children: Schema.Number,
+  ratePlan: RatePlan,
+  nights: Schema.Number,
+  language: Schema.Literals(["es", "en"] satisfies Lang[]),
+  currency: Schema.String,
+  quote: Schema.Struct({
+    id: Schema.String,
+    expired: Schema.Boolean,
+    expiresAt: Schema.String,
+    nights: Schema.Array(Schema.Struct({ date: Schema.String, priceCents: Schema.Number })),
+    totalCents: Schema.Number,
+    requiredInitialPaymentCents: Schema.Number,
+    remainingScheduledCents: Schema.Number,
+    cancellation: Cancellation,
+  }),
+  acceptance: Schema.NullOr(Schema.Struct({ quoteId: Schema.String, acceptedAt: Schema.String })),
+});
+export type CheckoutView = typeof CheckoutView.Type;
+
+const decodeCheckout = HttpIncomingMessage.schemaBodyJson(
+  Schema.Struct({ ...CheckoutView.fields, token: Schema.optionalKey(Schema.String) }),
+);
 
 export type CheckoutOutcome =
   | { kind: "ready"; view: CheckoutView; token: string }
@@ -63,71 +80,56 @@ export type CheckoutOutcome =
   | { kind: "has_payment" }
   | { kind: "unavailable" };
 
-function isView(value: unknown): value is CheckoutView {
-  if (typeof value !== "object" || value === null) return false;
-  const view = value as Partial<CheckoutView>;
-  return typeof view.currency === "string" && typeof view.quote?.id === "string";
-}
-
-async function call(
-  apiBase: string,
-  path: string,
-  init: { method: "GET" | "POST"; token?: string; body?: unknown },
-): Promise<CheckoutOutcome> {
-  const url = new URL(path, apiBase.endsWith("/") ? apiBase : `${apiBase}/`);
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: init.method,
-      credentials: "omit",
-      referrerPolicy: "no-referrer",
-      headers: {
-        accept: "application/json",
-        ...(init.body === undefined ? {} : { "content-type": "application/json" }),
-        ...(init.token ? { authorization: `Bearer ${init.token}` } : {}),
-      },
-      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-    });
-  } catch {
-    return { kind: "unavailable" };
-  }
-  if (response.status === 401) return { kind: "denied" };
-  const body: unknown = await response.json().catch(() => null);
-  const error = (body as { error?: unknown } | null)?.error;
-  if (response.status === 429)
+const refusal = (status: number, error: string | null): CheckoutOutcome => {
+  if (status === 401) return { kind: "denied" };
+  if (status === 429)
     return { kind: error === "too many acceptances for this checkout" ? "limited" : "throttled" };
-  if (response.status === 409 && error === "quote was replaced by a newer quote")
+  if (status === 409 && error === "quote was replaced by a newer quote")
     return { kind: "replaced" };
-  if (response.status === 409 && error === "no availability") return { kind: "sold_out" };
-  if (response.status === 409 && error === "checkout already has a payment")
-    return { kind: "has_payment" };
+  if (status === 409 && error === "no availability") return { kind: "sold_out" };
+  if (status === 409 && error === "checkout already has a payment") return { kind: "has_payment" };
   if (error === "quote has expired" || error === "quote not found") return { kind: "expired" };
-  if (response.status === 400 || response.status === 404)
-    return { kind: "invalid", error: typeof error === "string" ? error : "" };
-  if (!response.ok || !isView(body)) return { kind: "unavailable" };
-  const { token, ...view } = body as CheckoutView & { token?: string };
-  return { kind: "ready", view, token: token ?? init.token ?? "" };
-}
+  if (status === 400 || status === 404) return { kind: "invalid", error: error ?? "" };
+  return { kind: "unavailable" };
+};
 
-export const startCheckout = (apiBase: string, selection: CheckoutSelection, language: Lang) =>
-  call(apiBase, "public/checkouts", { method: "POST", body: { ...selection, language } });
+const checkoutOutcome = (
+  exchange: Effect.Effect<HttpClientResponse.HttpClientResponse, PmsFailure, PmsClient>,
+  sentToken?: string,
+): Effect.Effect<CheckoutOutcome, never, PmsClient> =>
+  exchange.pipe(
+    Effect.flatMap((response) =>
+      isSuccess(response)
+        ? Effect.map(decodeCheckout(response), ({ token, ...view }): CheckoutOutcome => ({
+            kind: "ready",
+            view,
+            token: token ?? sentToken ?? "",
+          }))
+        : Effect.map(errorMessage(response), (error) => refusal(response.status, error)),
+    ),
+    Effect.catchTags({
+      HttpClientError: () => Effect.succeed<CheckoutOutcome>({ kind: "unavailable" }),
+      SchemaError: () => Effect.succeed<CheckoutOutcome>({ kind: "unavailable" }),
+    }),
+  );
 
-export const readCheckout = (apiBase: string, token: string) =>
-  call(apiBase, "public/checkout", { method: "GET", token });
+export const startCheckout = (selection: CheckoutSelection, language: Lang) =>
+  checkoutOutcome(pmsPost("/public/checkouts", { body: { ...selection, language } }));
 
-export const refreshQuote = (apiBase: string, token: string) =>
-  call(apiBase, "public/checkout/quotes", { method: "POST", token });
+export const readCheckout = (token: string) =>
+  checkoutOutcome(pmsGet("/public/checkout", { token }), token);
+
+export const refreshQuote = (token: string) =>
+  checkoutOutcome(pmsPost("/public/checkout/quotes", { token }), token);
 
 export const acceptQuote = (
-  apiBase: string,
   token: string,
   acceptance: { quoteId: string; language: Lang; contact: BookingContact; notes?: string },
 ) =>
-  call(apiBase, "public/checkout/acceptances", {
-    method: "POST",
+  checkoutOutcome(
+    pmsPost("/public/checkout/acceptances", { token, body: { ...acceptance, agreed: true } }),
     token,
-    body: { ...acceptance, agreed: true },
-  });
+  );
 
 export const selectionKey = (selection: CheckoutSelection) =>
   JSON.stringify(selectionFields.map((field) => selection[field]));

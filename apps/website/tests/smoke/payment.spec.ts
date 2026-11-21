@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
+import { expect, test } from "../support/browser-errors";
 import { executeSql, localDatabase } from "../../../backend/scripts/d1.mjs";
 import {
   FAKE_PAYMENT_SERVICES_URL,
@@ -388,12 +389,17 @@ test("a lost payment response says the payment was sent and never invites paying
   page,
 }) => {
   await fillCheckout(page, "flexible", payerEmail());
-  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, (route) => route.abort());
+  let paymentsSent = 0;
+  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, (route) => {
+    paymentsSent += 1;
+    return route.abort();
+  });
 
   await payButton(page, "100.00").click();
 
   const sent = page.getByRole("heading", { name: "Pago enviado, consultando su estado" });
   await expect(sent).toBeFocused();
+  expect(paymentsSent).toBe(1);
   await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Consultar estado" }).click();
   await expect(sent).toBeVisible();

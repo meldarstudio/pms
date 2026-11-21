@@ -356,6 +356,9 @@ importers:
       country-flag-icons:
         specifier: ^1.6.20
         version: 1.6.20
+      effect:
+        specifier: 4.1.5
+        version: 4.1.5
       phosphor-svelte:
         specifier: 3.1.1
         version: 3.1.1(@types/node@24.19.1)(@volar/typescript@2.4.30(typescript@6.0.3))(esbuild@0.28.2)(jiti@2.7.0)(svelte@5.58.0)(tsx@4.23.15)(typescript@6.0.3)(yaml@2.9.1)
@@ -3558,6 +3561,9 @@ packages:
 
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
+
+  effect@4.1.5:
+    resolution: {integrity: sha512-xyR20KhQI0vg2gD8ILUSQRTTESEYJ0JKdP+QD8J37xbwPTqXRxFM/l0+vUVD9fuSvoYruoTqyt33C4FZv1s4TQ==}
 
   electron-to-chromium@1.5.444:
     resolution: {integrity: sha512-5ss/uJfoDYDHT0lfJzT6FbcskIzROIOPf0BbbFkGcvDzoJU7i//9GDrwwIHQVmIsrAGiF3ihpADBRIsrEFt1rQ==}
@@ -8421,6 +8427,8 @@ snapshots:
       gopd: 1.2.0
 
   ee-first@1.1.1: {}
+
+  effect@4.1.5: {}
 
   electron-to-chromium@1.5.444: {}
 

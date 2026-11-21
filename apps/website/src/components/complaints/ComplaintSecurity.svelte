@@ -1,7 +1,9 @@
 <script lang="ts">
   import { Button } from "@ui-sdk/svelte/button";
+  import { Effect, Layer } from "effect";
   import { useTranslations, type Lang } from "@/i18n/utils";
-  import { renderSecurityCheck, type SecurityCheck } from "@/lib/reservation/providers";
+  import { startIsland } from "@/lib/island";
+  import { renderSecurityCheck } from "@/lib/reservation/providers";
 
   let {
     siteKey,
@@ -24,7 +26,6 @@
     if (!siteKey || !container || compact === null) return;
     const notify = onToken;
     let active = true;
-    let check: SecurityCheck | null = null;
     const fail = () => {
       if (!active) return;
       notify("");
@@ -32,30 +33,32 @@
     };
     notify("");
     failed = false;
-    void renderSecurityCheck(container, {
-      siteKey,
-      lang: language,
-      action: "complaint",
-      size: compact ? "compact" : "flexible",
-      onPassed: (token) => {
-        if (!active) return;
-        notify(token);
-        failed = false;
-      },
-      onExpired: () => {
-        if (active) notify("");
-      },
-      onError: fail,
-    })
-      .then((rendered) => {
-        if (active) check = rendered;
-        else rendered.dispose();
-      })
-      .catch(fail);
+    const island = startIsland(Layer.empty);
+    island.fork(
+      renderSecurityCheck(container, {
+        siteKey,
+        lang: language,
+        action: "complaint",
+        size: compact ? "compact" : "flexible",
+        onPassed: (token) => {
+          if (!active) return;
+          notify(token);
+          failed = false;
+        },
+        onExpired: () => {
+          if (active) notify("");
+        },
+        onError: fail,
+      }).pipe(
+        Effect.andThen(Effect.never),
+        Effect.catch(() => Effect.sync(fail)),
+        Effect.scoped,
+      ),
+    );
     return () => {
       active = false;
       notify("");
-      check?.dispose();
+      island.dispose();
     };
   });
 </script>
