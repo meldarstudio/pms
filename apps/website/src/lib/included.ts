@@ -3,7 +3,6 @@ import type { ui } from "@/i18n/ui";
 type UiKey = keyof (typeof ui)["en"];
 type Detail = { id: string; labelKey: UiKey };
 
-/** What every room has; shown once in each room's details, not repeated per room. */
 export const roomAmenities = [
   { id: "bathroom", labelKey: "rooms.included.bathroom" },
   { id: "towels", labelKey: "rooms.included.towels" },

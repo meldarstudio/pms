@@ -371,7 +371,6 @@ export async function renderSecurityCheck(
     action: options.action ?? "payment",
     language: options.lang,
     size: options.size,
-    // The site has no dark mode; Turnstile's default "auto" follows the OS and turns dark.
     theme: "light",
     callback: (token) => {
       answer(token);

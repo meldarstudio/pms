@@ -39,10 +39,8 @@ const locales = (i18n?.locales ?? []).filter(
             );
           }
         });
-        window.addEventListener("pageshow", (event) => {
+        window.addEventListener("pageshow", function resyncAfterBackForwardCache(event) {
           if (!event.persisted) return;
-          // If the page was loaded from a cache, the language select selected index might not be
-          // in sync with the current page.
           const markupSelectedIndex =
             select.querySelector<HTMLOptionElement>("option[selected]")?.index;
           if (markupSelectedIndex !== select.selectedIndex) {

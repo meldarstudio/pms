@@ -17,8 +17,6 @@ export default defineConfig({
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
     },
     {
-      // Keeps the server in the foreground. Astro otherwise backgrounds it in
-      // agent sessions, and Playwright treats that as the server exiting.
       command: `pnpm preview --ignore-lock --host ${hostname} --port ${port}`,
       url: `${WEBSITE_URL}/`,
       reuseExistingServer: false,

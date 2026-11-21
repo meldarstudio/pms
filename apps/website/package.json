@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "check": "astro sync && astro-check && svelte-check --tsconfig tsconfig.svelte.json",
+    "check": "vp lint . && astro sync && astro-check && svelte-check --tsconfig tsconfig.svelte.json",
     "test": "vp test run",
     "test:smoke": "node scripts/build-for-local-api.mjs && playwright test --project=smoke",
     "verify:build": "pnpm build && node scripts/verify-build.mjs",

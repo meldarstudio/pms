@@ -1,6 +1,18 @@
 import { fileURLToPath } from "node:url";
 import type { OxlintConfig } from "vite-plus/lint";
 
+export const noComments = {
+  jsPlugins: [
+    {
+      name: "pms",
+      specifier: fileURLToPath(new URL("./no-comments.mjs", import.meta.url)),
+    },
+  ],
+  rules: {
+    "pms/no-comments": "error",
+  },
+} satisfies OxlintConfig;
+
 export const lint = {
   plugins: ["typescript", "unicorn", "oxc"],
   categories: {
@@ -11,15 +23,12 @@ export const lint = {
       name: "vite-plus",
       specifier: "vite-plus/oxlint-plugin",
     },
-    {
-      name: "pms",
-      specifier: fileURLToPath(new URL("./no-comments.mjs", import.meta.url)),
-    },
+    ...noComments.jsPlugins,
   ],
   rules: {
     "no-undef": "error",
     "vite-plus/prefer-vite-plus-imports": "error",
-    "pms/no-comments": "error",
+    ...noComments.rules,
   },
   options: {
     typeAware: true,

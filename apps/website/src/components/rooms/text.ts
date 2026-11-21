@@ -2,7 +2,6 @@ import { bookingStepsKeys } from "@/components/reservation/booking-steps";
 import type { ui } from "@/i18n/ui";
 import type { useTranslations } from "@/i18n/utils";
 
-/** Copy the rooms island renders; the `.astro` wrapper translates it at build time. */
 export const roomsBookingKeys = [
   "reservation.choose.missing",
   "reservation.choose.loading",

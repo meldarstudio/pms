@@ -1,13 +1,3 @@
-// Checks every link and asset in the built site (dist/).
-//
-// - Internal links (href, src, srcset, and same-site absolute URLs) must
-//   resolve to a file in dist/. A #fragment must match an id on the target page.
-// - External http(s) links are requested once each. 404/410, DNS failures, and
-//   refused connections fail the run. 403/429, timeouts, and other errors only
-//   print a warning, because many sites block bots.
-// - mailto: and tel: links are only checked to be well formed.
-//
-// Usage: node scripts/check-links.mjs [--internal-only]
 import { readFile, readdir, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -111,11 +101,7 @@ async function isFile(file) {
   }
 }
 
-// Maps a same-site URL path to a file in dist/, the way Cloudflare's default
-// asset handling ("auto-trailing-slash") does. Returns { file, redirect }, where
-// redirect is set when the host only serves the file after a redirect, such as
-// /404/ to /404 for dist/404.html.
-async function resolveInDist(pathname) {
+async function resolveLikeCloudflareAutoTrailingSlash(pathname) {
   let decoded;
   try {
     decoded = decodeURIComponent(pathname);
@@ -162,7 +148,6 @@ async function request(url, method) {
       "accept-language": "es-PE,es;q=0.9,en;q=0.8",
     },
   });
-  // Do not download bodies we do not need.
   await response.body?.cancel().catch(() => {});
   return response.status;
 }
@@ -181,13 +166,8 @@ function describeError(error) {
 }
 
 async function checkExternal(url) {
-  let headStatus;
-  try {
-    headStatus = await request(url, "HEAD");
-    if (headStatus >= 200 && headStatus < 400) return null;
-  } catch {
-    // Some servers reject or hang on HEAD. Fall back to GET.
-  }
+  const headStatus = await request(url, "HEAD").catch(() => null);
+  if (headStatus !== null && headStatus >= 200 && headStatus < 400) return null;
   try {
     const status = await request(url, "GET");
     if (status >= 200 && status < 400) return null;
@@ -276,7 +256,7 @@ for (const [file, { links, ids: ownIds }] of pages) {
     }
 
     internalCount++;
-    const resolved = await resolveInDist(url.pathname);
+    const resolved = await resolveLikeCloudflareAutoTrailingSlash(url.pathname);
     if (!resolved) {
       fail(raw, `no file in dist/ for ${url.pathname}`);
       continue;

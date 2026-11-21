@@ -24,13 +24,10 @@ export type Room = {
   pmsRoomTypeId?: string;
   gallery: RoomPhoto[];
   nameKey: UiKey;
-  /** Room description, for structured data; the room cards list facts instead. */
   leadKey: UiKey;
   bedsKey: UiKey;
   areaKey: UiKey;
-  /** Floor area in square meters, for structured data. */
   areaSqm: number;
-  /** Guests the room sleeps, shown before a search; a search shows the PMS limit instead. */
   sleeps: number;
 };
 

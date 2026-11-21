@@ -6,8 +6,7 @@ const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const translated = t("reviews.translated");
 
-// Guests' own words from Google (issue #60). Do not edit the quotes.
-const reviews = [
+const verbatimGoogleReviews = [
   { name: "Raquel", quote: t("reviews.raquel") },
   { name: "VrV", quote: t("reviews.vrv") },
   { name: "Milton", quote: t("reviews.milton") },
@@ -24,7 +23,7 @@ const reviews = [
     </h2>
     <p class="mt-4 max-w-[60ch] leading-relaxed text-pretty text-stone-600">{t("reviews.body")}</p>
     <div class="mt-8 grid grid-cols-1 divide-y divide-stone-200 md:mt-12 md:grid-cols-3 md:gap-10 md:divide-y-0 lg:gap-16">
-      {reviews.map(({ name, quote }) => (
+      {verbatimGoogleReviews.map(({ name, quote }) => (
         <figure class="flex flex-col py-6 first:pt-0 last:pb-0 md:py-0">
           <span aria-hidden="true" class="text-accent-500 block h-8 text-6xl leading-none">
             &ldquo;
