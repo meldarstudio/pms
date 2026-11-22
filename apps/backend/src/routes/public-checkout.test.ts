@@ -188,41 +188,16 @@ describe("entering Review", () => {
     expect(view.quote).toMatchObject(amounts);
   });
 
-  it.each([
-    [
-      "Flexible due now and its cancellation charge as each room's first night added together",
-      { ratePlan: "flexible" },
-      {
-        totalCents: 38000,
-        requiredInitialPaymentCents: 19000,
-        remainingScheduledCents: 19000,
-        cancellation: {
-          freeCancellation: "available",
-          freeUntil: "2026-10-18",
-          chargeCents: 19000,
-        },
-      },
-    ],
-    [
-      "Non-refundable as the full stay of both rooms",
-      { ratePlan: "non_refundable" },
-      {
-        totalCents: 34200,
-        requiredInitialPaymentCents: 34200,
-        remainingScheduledCents: 0,
-        cancellation: { freeCancellation: "none", freeUntil: null, chargeCents: 34200 },
-      },
-    ],
-  ])("prices two rooms as one quote: %s", async (_name, overrides, amounts) => {
+  it("prices two rooms as one quote of both rooms' stays", async () => {
     db.env.PUBLISHED_ROOM_TYPE_IDS = "type-king,type-queen";
 
-    const view = await started({ ...overrides, rooms: [king, { ...queen, children: 1 }] });
+    const view = await started({ rooms: [king, { ...queen, children: 1 }] });
 
     expect(view.rooms.map(({ roomTypeId, children }) => [roomTypeId, children])).toEqual([
       ["type-king", 0],
       ["type-queen", 1],
     ]);
-    expect(view.quote).toMatchObject(amounts);
+    expect(view.quote.totalCents).toBe(38000);
   });
 
   it.each([

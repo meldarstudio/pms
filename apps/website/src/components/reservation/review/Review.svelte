@@ -19,7 +19,12 @@
     reviewLoading,
     whatsappVisible,
   } from "@/lib/reservation/checkout-selectors";
-  import { readSearch, searchParams, type StaySearch } from "@/lib/reservation/search";
+  import {
+    occupancyOnly,
+    readSearch,
+    searchParams,
+    type StaySearch,
+  } from "@/lib/reservation/search";
   import Confirmation from "./Confirmation.svelte";
   import ContactFields from "./ContactFields.svelte";
   import Outcome from "./Outcome.svelte";
@@ -132,9 +137,14 @@
   );
   const room = $derived(stayRooms[0] ?? null);
   const ratesHref = $derived(search ? `${chooseHref}?${searchParams(search)}` : chooseHref);
-  const choiceHref = $derived(
-    search ? `${chooseHref}?${searchParams({ ...search, at: 0 })}` : chooseHref,
-  );
+  const choiceHref = $derived.by(() => {
+    if (!search) return chooseHref;
+    const [only, ...others] = search.requests;
+    const back = others.length
+      ? { ...search, at: 0 }
+      : { ...occupancyOnly(search), featured: only?.room ?? null };
+    return `${chooseHref}?${searchParams(back)}`;
+  });
   const { view, payment } = $derived(checkout);
   const confirmedReservation = $derived(
     payment?.state === "confirmed" ? payment.reservation : null,
