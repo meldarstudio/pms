@@ -32,7 +32,7 @@ import {
 } from "@/lib/reservation-commands";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
 import {
-  cardRefundSchema,
+  onlineRefundSchema,
   couponIssueSchema,
   manualRefundSource,
   refundCompletionSchema,
@@ -63,7 +63,7 @@ type FormProps = {
 type ReturnSelection = { kind: string; source: string };
 type ReturnChoice =
   | { kind: "coupon" | "manual"; maxCents: number }
-  | { kind: "card"; paymentId: string; maxCents: number };
+  | { kind: "online"; paymentId: string; method: PaymentMethod; maxCents: number };
 
 const returnKinds = [
   { value: "coupon", label: "Cupón" },
@@ -132,7 +132,7 @@ function refundSetup(detail: ReservationDetail) {
   const status = accountStatus(detail);
   const owedCents = status.state === "owed-back" ? status.cents : 0;
   const maxCents = Math.min(owedCents, refundCapacityCents(detail));
-  const cards = cardRefundPayments(detail).map(({ payment, leftCents }) => ({
+  const onlinePayments = cardRefundPayments(detail).map(({ payment, leftCents }) => ({
     value: payment.id,
     label: `${onlineRefundTarget(payment.method)} · Pago en línea del ${format(parseISO(payment.paymentDate), "d MMM yyyy")}`,
     method: payment.method,
@@ -142,17 +142,27 @@ function refundSetup(detail: ReservationDetail) {
     if (kind === "coupon") return { kind: "coupon", maxCents: owedCents };
     if (kind !== "money") return null;
     if (source === manualRefundSource) return { kind: "manual", maxCents };
-    const card = cards.find((card) => card.value === source);
-    return card ? { kind: "card", paymentId: card.value, maxCents: card.maxCents } : null;
+    const online = onlinePayments.find((entry) => entry.value === source);
+    return online
+      ? {
+          kind: "online",
+          paymentId: online.value,
+          method: online.method,
+          maxCents: online.maxCents,
+        }
+      : null;
   };
   const limit = (selection: ReturnSelection) => choice(selection)?.maxCents ?? 0;
   const newest = firstRefundPayment(detail)?.method;
   const basis = { payments: detail.payments, refunds: detail.refunds };
   const couponIds = detail.coupons.map((coupon) => coupon.id);
-  const source = cards[0]?.value ?? manualRefundSource;
+  const source = onlinePayments[0]?.value ?? manualRefundSource;
   return {
-    cards,
-    sources: [...cards, { value: manualRefundSource, label: "En mano o por transferencia" }],
+    onlinePayments,
+    sources: [
+      ...onlinePayments,
+      { value: manualRefundSource, label: "En mano o por transferencia" },
+    ],
     limit,
     choice,
     basis,
@@ -161,7 +171,8 @@ function refundSetup(detail: ReservationDetail) {
     schema: (value: RefundValues) => {
       const selected = choice(value);
       if (selected?.kind === "coupon") return couponIssueSchema(selected.maxCents, detail.currency);
-      if (selected?.kind === "card") return cardRefundSchema(selected.maxCents, detail.currency);
+      if (selected?.kind === "online")
+        return onlineRefundSchema(selected.maxCents, selected.method, detail.currency);
       return refundSchema(selected?.maxCents ?? 0, detail.currency);
     },
     defaults: refundDefaults(
@@ -196,7 +207,7 @@ export function RefundForm({
       const selected = setup.choice(value);
       if (!selected) return;
       if (selected.kind === "coupon") return issueCoupon(value);
-      if (selected.kind === "card") return returnToCard(value, selected.paymentId);
+      if (selected.kind === "online") return returnOnline(value, selected);
       const parsed = refundSchema(setup.limit(value), detail.currency).parse(value);
       const reference = parsed.reference.toUpperCase();
       const completed = parsed.handedOver
@@ -249,8 +260,11 @@ export function RefundForm({
     toast.success("Cupón emitido");
     onDone();
   }
-  async function returnToCard(value: RefundValues, paymentId: string) {
-    const parsed = cardRefundSchema(setup.limit(value), detail.currency).parse(value);
+  async function returnOnline(
+    value: RefundValues,
+    { paymentId, method, maxCents }: Extract<ReturnChoice, { kind: "online" }>,
+  ) {
+    const parsed = onlineRefundSchema(maxCents, method, detail.currency).parse(value);
     const result = await onSave(
       [
         {
@@ -298,7 +312,7 @@ export function RefundForm({
   const selected = setup.choice({ kind, source });
   const coupon = selected?.kind === "coupon";
   const manual = selected?.kind === "manual";
-  const onlineMethod = setup.cards.find((card) => card.value === source)?.method;
+  const onlineMethod = selected?.kind === "online" ? selected.method : "card";
   const maxCents = selected?.maxCents ?? 0;
   const previewAmount = parseMajorToCents(amount.trim()) ?? 0;
   const previewEnabled = coupon && previewAmount > 0 && previewAmount <= maxCents;
@@ -346,7 +360,7 @@ export function RefundForm({
               : coupon
                 ? "Emitir cupón"
                 : !manual
-                  ? `Devolver ${onlineRefundTarget(onlineMethod ?? "card").toLowerCase()}`
+                  ? `Devolver ${onlineRefundTarget(onlineMethod).toLowerCase()}`
                   : handedOver
                     ? "Registrar reembolso"
                     : "Solicitar reembolso"}
@@ -372,7 +386,7 @@ export function RefundForm({
           />
         )}
       </form.AppField>
-      {!coupon && setup.cards.length > 0 && (
+      {!coupon && setup.onlinePayments.length > 0 && (
         <form.AppField name="source">
           {(field) => (
             <field.Radio

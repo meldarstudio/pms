@@ -66,7 +66,7 @@ export const reservationConditions: LocalizedLegalDocument = {
         heading: "Devoluciones",
         items: [
           "Si queda un saldo a su favor, solicítelo por WhatsApp o correo con la referencia de su reserva.",
-          "Lo devolvemos por el mismo medio de pago: a la misma tarjeta o al mismo Yape, si pagó en línea, o por transferencia a la cuenta que usted indique, si pagó en el hotel en efectivo, Yape o transferencia.",
+          "Lo devolvemos por el mismo medio de pago: a la misma tarjeta, si pagó con tarjeta; al mismo Yape, si pagó con Yape en línea; o por transferencia a la cuenta que usted indique, si pagó en efectivo, con Yape en el hotel o por transferencia.",
           "Emitimos la devolución dentro de los 7 días hábiles siguientes a su aprobación. El tiempo que tarde su banco en reflejarla no depende del hotel.",
           "Solo con su acuerdo podemos convertir el saldo a su favor en un cupón para una estadía futura en lugar de devolver el dinero.",
         ],
@@ -146,7 +146,7 @@ export const reservationConditions: LocalizedLegalDocument = {
         heading: "Refunds",
         items: [
           "If there is a balance in your favor, request it by WhatsApp or email with your reservation reference.",
-          "We refund it by the same payment method: to the same card or Yape if you paid online, or by bank transfer to the account you name if you paid at the hotel by cash, Yape or transfer.",
+          "We refund it by the same payment method: to the same card if you paid by card; to the same Yape if you paid by Yape online; or by bank transfer to the account you name if you paid by cash, by Yape at the hotel or by transfer.",
           "We issue the refund within 7 business days of approving it. The time your bank takes to show it is outside the hotel's control.",
           "Only with your agreement can we turn a balance in your favor into a coupon for a future stay instead of returning the money.",
         ],

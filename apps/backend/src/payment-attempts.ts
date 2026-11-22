@@ -289,20 +289,31 @@ function chargeInstant(creationDate: number) {
 async function record(db: Db, attempt: Attempt, result: ChargeResult, context: PaymentContext) {
   if (result.kind === "succeeded" && matches(attempt, result.charge))
     return present(db, await succeed(db, attempt, result.charge, context));
-  if (result.kind === "review" || result.kind === "declined") {
-    const [updated] = await db
-      .update(paymentAttempts)
-      .set(
-        result.kind === "review"
-          ? { status: "review" }
-          : { status: "failed", failureCode: result.code, failureMessage: result.message },
-      )
-      .where(and(eq(paymentAttempts.id, attempt.id), eq(paymentAttempts.status, "unknown")))
-      .returning();
-    return present(db, updated ?? (await findAttempt(db, attempt.id)));
-  }
+  if (result.kind === "review" && onlinePaymentMethod(attempt.sourceId) === "card")
+    return settle(db, attempt, { status: "review" });
+  if (result.kind === "declined")
+    return settle(db, attempt, {
+      status: "failed",
+      failureCode: result.code,
+      failureMessage: result.message,
+    });
+  if (result.kind === "review")
+    console.error("non-card charge asked for bank verification", attempt.id);
   context.later?.(() => resolve(db, attempt, context));
   return present(db, attempt);
+}
+
+async function settle(
+  db: Db,
+  attempt: Attempt,
+  outcome: Pick<Attempt, "status"> & Partial<Pick<Attempt, "failureCode" | "failureMessage">>,
+) {
+  const [updated] = await db
+    .update(paymentAttempts)
+    .set(outcome)
+    .where(and(eq(paymentAttempts.id, attempt.id), eq(paymentAttempts.status, "unknown")))
+    .returning();
+  return present(db, updated ?? (await findAttempt(db, attempt.id)));
 }
 
 async function succeed(db: Db, attempt: Attempt, paid: CulqiCharge, context: PaymentContext) {

@@ -273,6 +273,18 @@ describe("paying the accepted quote", () => {
     ]);
   });
 
+  it("keeps a Yape charge Culqi answers with bank review pending, without another charge", async () => {
+    const checkout = await acceptedCheckout();
+
+    const payment = await paid(checkout, { sourceId: "ype_test_review" });
+    const retried = await pay(checkout, { sourceId: "ype_test_approved" });
+
+    expect(payment).toMatchObject({ state: "processing", method: "yape" });
+    expect(await retried.json()).toMatchObject({ payment: { state: "processing" } });
+    expect(charges()).toHaveLength(1);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "unknown" }]);
+  });
+
   it("refuses a Yape payment above S/ 2,000 before the security check or Culqi", async () => {
     const checkout = await acceptedCheckout({
       ratePlan: "non_refundable",

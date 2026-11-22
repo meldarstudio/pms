@@ -234,9 +234,10 @@ export const openCardForm = Effect.fnUntraced(function* (options: {
           },
         });
         checkout.culqi = () => {
-          const token = checkout.token?.id;
+          const token = checkout.token?.id ?? null;
+          const refused = !token && checkout.error != null;
           checkout.close();
-          resume(token ? Effect.succeed(token) : Effect.fail(new PaymentSourceRefused()));
+          resume(refused ? Effect.fail(new PaymentSourceRefused()) : Effect.succeed(token));
         };
         checkout.closeCheckout = () => resume(Effect.succeed(null));
         checkout.open();
