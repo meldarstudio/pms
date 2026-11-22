@@ -191,6 +191,7 @@ describe("paying the accepted quote", () => {
     expect(payment).toEqual({
       attemptId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
       state: "confirmed",
+      method: "card",
       amountCents: 10000,
       currency: "PEN",
       delayed: false,
@@ -259,6 +260,45 @@ describe("paying the accepted quote", () => {
       reservation: { paidCents: 18000, outstandingCents: 0 },
     });
   });
+
+  it("confirms a Yape payment and records it on the bill as Yape", async () => {
+    const checkout = await acceptedCheckout();
+
+    const payment = await paid(checkout, { sourceId: "ype_test_approved" });
+
+    expect(payment).toMatchObject({ state: "confirmed", method: "yape", amountCents: 10000 });
+    expect(charges()[0]!.body).toMatchObject({ source_id: "ype_test_approved", amount: 10000 });
+    expect(rows("SELECT method, amount_cents, culqi_charge_id FROM payments")).toEqual([
+      { method: "yape", amount_cents: 10000, culqi_charge_id: expect.stringMatching(/^chr_/) },
+    ]);
+  });
+
+  it("keeps a Yape charge Culqi answers with bank review pending, without another charge", async () => {
+    const checkout = await acceptedCheckout();
+
+    const payment = await paid(checkout, { sourceId: "ype_test_review" });
+    const retried = await pay(checkout, { sourceId: "ype_test_approved" });
+
+    expect(payment).toMatchObject({ state: "processing", method: "yape" });
+    expect(await retried.json()).toMatchObject({ payment: { state: "processing" } });
+    expect(charges()).toHaveLength(1);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "unknown" }]);
+  });
+
+  it("refuses a Yape payment above S/ 2,000 before the security check or Culqi", async () => {
+    const checkout = await acceptedCheckout({
+      ratePlan: "non_refundable",
+      checkOut: "2026-11-02",
+      rooms: [king, king],
+    });
+
+    const response = await pay(checkout, { sourceId: "ype_test_approved" });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Yape payment exceeds its limit" });
+    expect(charges()).toHaveLength(0);
+    expect(turnstile.verifications).toHaveLength(0);
+  });
 });
 
 describe("payment outcomes", () => {
@@ -271,6 +311,7 @@ describe("payment outcomes", () => {
       payment: {
         attemptId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
         state: "declined",
+        method: "card",
         amountCents: 10000,
         currency: "PEN",
         delayed: false,
@@ -374,6 +415,7 @@ describe("payment outcomes", () => {
     expect(await status(checkout.token)).toEqual({
       attemptId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
       state: "unfulfilled",
+      method: "card",
       amountCents: 10000,
       currency: "PEN",
       delayed: false,
@@ -728,6 +770,7 @@ describe("payment access and privacy", () => {
       "attemptId",
       "currency",
       "delayed",
+      "method",
       "reservation",
       "state",
     ]);

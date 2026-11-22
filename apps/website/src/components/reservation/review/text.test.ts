@@ -39,18 +39,30 @@ describe("Review copy", () => {
     const reservation = { code: "AB12CD", paidCents: 1, outstandingCents: 1, refundDueCents: 1 };
     const wanted = Object.keys(states).flatMap((state) =>
       [false, true].flatMap((delayed) =>
-        [undefined, "authentication_expired" as const].flatMap((declineReason) => {
-          const outcome = outcomePresentation({
-            attemptId: "attempt",
-            state: state as GuestPayment["state"],
-            amountCents: 1,
-            currency: "PEN",
-            delayed,
-            declineReason,
-            reservation,
-          });
-          return [outcome.titleKey, outcome.bodyKey, ...outcome.rows.map((row) => row.labelKey)];
-        }),
+        [undefined, "authentication_expired" as const].flatMap((declineReason) =>
+          (["card", "yape"] as const).flatMap((method) => {
+            const outcome = outcomePresentation({
+              attemptId: "attempt",
+              state: state as GuestPayment["state"],
+              method,
+              amountCents: 1,
+              currency: "PEN",
+              delayed,
+              declineReason,
+              reservation,
+            });
+            const shown = ["eyebrow", "reassurance", "amount"].map(
+              (part) => `${outcome.copyKey}.${part}`,
+            );
+            return [
+              outcome.titleKey,
+              outcome.bodyKey,
+              outcome.retryKey,
+              ...(state === "declined" ? shown : []),
+              ...outcome.rows.map((row) => row.labelKey),
+            ];
+          }),
+        ),
       ),
     );
     expect(missing(wanted)).toEqual([]);

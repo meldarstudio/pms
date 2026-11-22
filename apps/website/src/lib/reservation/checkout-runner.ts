@@ -172,9 +172,13 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
           currency: command.currency,
           email: command.email,
           lang: command.lang,
+          yape: command.yape,
         }).pipe(
           Effect.matchEffect({
-            onFailure: () => send({ type: "cardFormFailed" }),
+            onFailure: (error) =>
+              send({
+                type: error._tag === "PaymentSourceRefused" ? "cardFormRefused" : "cardFormFailed",
+              }),
             onSuccess: (sourceId) => send({ type: "cardFormResolved", sourceId }),
           }),
         );

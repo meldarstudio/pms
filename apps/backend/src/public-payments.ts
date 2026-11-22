@@ -3,9 +3,10 @@ import type {
   CheckoutAuthenticationFailure,
   CheckoutPayment,
 } from "@pms/shared";
+import { onlinePaymentMethod, yapeAllowed } from "@pms/shared/online-payment";
 import type { Db } from "./db";
 import { HttpError, PAYMENT_PENDING } from "./http";
-import { reservationBill } from "./lib/reservation-bill";
+import { quoteBill, reservationBill } from "./lib/reservation-bill";
 import { requirePublicPaymentAdmission } from "./operation-controls";
 import {
   continuePublicAuthentication,
@@ -25,6 +26,7 @@ import { loadReservation } from "./reservation-read";
 
 export const TOO_MANY_PAYMENTS = "too many payment attempts";
 export const QUOTE_NOT_ACCEPTED = "quote has not been accepted";
+export const YAPE_LIMIT_EXCEEDED = "Yape payment exceeds its limit";
 
 export type GuestPaymentState =
   | "authentication_required"
@@ -60,6 +62,14 @@ export async function payableQuote(
   const acceptance = await latestAcceptance(db, checkout.id);
   if (acceptance?.quoteId !== quote.id) throw new HttpError(409, QUOTE_NOT_ACCEPTED);
   return { quote, acceptance };
+}
+
+export function requireMethodAllows({ quote }: PayableQuote, sourceId: string) {
+  if (
+    onlinePaymentMethod(sourceId) === "yape" &&
+    !yapeAllowed(quoteBill(quote).requiredInitialPaymentCents)
+  )
+    throw new HttpError(400, YAPE_LIMIT_EXCEEDED);
 }
 
 export async function authenticateCheckout(
@@ -156,6 +166,7 @@ async function presentGuestPayment(db: Db, attempt: Attempt) {
   return {
     attemptId: attempt.id,
     state: guestState(attempt, saved?.reservation.status ?? null),
+    method: onlinePaymentMethod(attempt.sourceId),
     ...(attempt.status === "failed" && attempt.failureCode === "authentication_expired"
       ? { declineReason: "authentication_expired" as const }
       : {}),

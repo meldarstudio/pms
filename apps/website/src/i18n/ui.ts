@@ -492,7 +492,9 @@ export const ui = {
       "I accept the {terms}, including the cancellation and no-show conditions.",
     "reservation.review.saving": "Preparing your payment…",
     "reservation.review.payment": "Payment",
-    "reservation.pay.provider": "Card payment is processed by Culqi.",
+    "reservation.pay.provider": "Card and Yape payments are processed by Culqi.",
+    "reservation.pay.yapeUnavailable":
+      "Yape accepts payments of up to S/ 2,000, so this amount can only be paid by card.",
     "reservation.pay.security": "Security check before payment",
     "reservation.pay.button": "Pay {amount}",
     "reservation.pay.busy": "Processing…",
@@ -511,14 +513,18 @@ export const ui = {
     "reservation.pay.error.limited":
       "This review can't record another agreement, so nothing was charged. Your details stay on this page. Message us on WhatsApp to reserve.",
     "reservation.pay.error.card":
-      "The card form couldn't open. Nothing was charged: check your connection and try again.",
+      "The payment form couldn't open. Nothing was charged: check your connection and try again.",
+    "reservation.pay.error.source":
+      "Culqi couldn't accept those payment details, so nothing was charged. Check your card details, or your Yape phone number and a new approval code, and try again.",
+    "reservation.pay.error.yapeLimit":
+      "Yape accepts payments of up to S/ 2,000, so nothing was charged. Pay this amount by card.",
     "reservation.pay.error.unavailable":
       "We couldn't send your payment and nothing was charged. Your details are kept: try again in a moment, or message us on WhatsApp.",
     "reservation.pay.error.retry":
       "The payment didn't go through and nothing was charged. Your details are kept on this page: please pay again.",
     "reservation.outcome.submitted.title": "Payment sent, checking its status",
     "reservation.outcome.submitted.body":
-      "We sent your payment but didn't receive an answer, so your card may have been charged. Please don't pay again: check its status here, or message us on WhatsApp or by email for help.",
+      "We sent your payment but didn't receive an answer, so you may have been charged. Please don't pay again: check its status here, or message us on WhatsApp or by email for help.",
     "reservation.outcome.reservation_changed.title": "Your reservation was updated by the hotel",
     "reservation.outcome.reservation_changed.body":
       "Your payment was received, and the hotel has since changed this reservation. Message us on WhatsApp or by email with your reference to confirm its current status.",
@@ -535,6 +541,12 @@ export const ui = {
     "reservation.outcome.declined.eyebrow": "Payment not completed",
     "reservation.outcome.declined.reassurance": "Your details and accepted terms are kept.",
     "reservation.outcome.declined.amount": "Amount to pay",
+    "reservation.outcome.declined_yape.title": "Your Yape payment was declined",
+    "reservation.outcome.declined_yape.body":
+      "Nothing was charged. The approval code may have expired or been mistyped, Yape's online purchases may be turned off, or your Yape limit may have been reached. Get a new code in the Yape app and try again, or pay by card.",
+    "reservation.outcome.declined_yape.eyebrow": "Payment not completed",
+    "reservation.outcome.declined_yape.reassurance": "Your details and accepted terms are kept.",
+    "reservation.outcome.declined_yape.amount": "Amount to pay",
     "reservation.outcome.authentication_expired.title": "Your bank verification expired",
     "reservation.outcome.authentication_expired.body":
       "Verification was left unfinished and this payment attempt was closed. No charge was made.",
@@ -545,7 +557,7 @@ export const ui = {
     "reservation.outcome.contactSaved": "Contact saved · terms accepted",
     "reservation.outcome.processing.title": "Confirming your payment",
     "reservation.outcome.processing.body":
-      "We're verifying your payment with the card processor. Please don't pay again: verification continues even if you close this page.",
+      "We're verifying your payment with the payment processor. Please don't pay again: verification continues even if you close this page.",
     "reservation.outcome.processing.delayed":
       "Verification is taking longer than usual. It continues even if you close this page, so please don't pay again. Check the status here later, or message us on WhatsApp or by email for help.",
     "reservation.outcome.paid_awaiting_reservation.title":
@@ -567,6 +579,7 @@ export const ui = {
     "reservation.outcome.outstanding": "Outstanding balance",
     "reservation.outcome.awaiting": "Awaiting resolution",
     "reservation.outcome.retry": "Pay with another card",
+    "reservation.outcome.retryYape": "Try again with a new Yape code",
     "reservation.outcome.verifyBank": "Open bank verification",
     "reservation.outcome.check": "Check status",
     "reservation.outcome.checking": "Checking your payment…",
@@ -1166,7 +1179,9 @@ export const ui = {
       "Acepto las {terms}, incluidas las de cancelación y no presentación.",
     "reservation.review.saving": "Preparando su pago…",
     "reservation.review.payment": "Pago",
-    "reservation.pay.provider": "El pago con tarjeta se procesa a través de Culqi.",
+    "reservation.pay.provider": "Los pagos con tarjeta y Yape se procesan a través de Culqi.",
+    "reservation.pay.yapeUnavailable":
+      "Yape acepta pagos de hasta S/ 2,000, así que este monto solo puede pagarse con tarjeta.",
     "reservation.pay.security": "Verificación de seguridad antes del pago",
     "reservation.pay.button": "Pagar {amount}",
     "reservation.pay.busy": "Procesando…",
@@ -1186,14 +1201,18 @@ export const ui = {
     "reservation.pay.error.limited":
       "Esta revisión no puede registrar otro acuerdo, así que no se cobró nada. Sus datos siguen en esta página. Escríbanos por WhatsApp para reservar.",
     "reservation.pay.error.card":
-      "No se pudo abrir el formulario de la tarjeta. No se cobró nada: revise su conexión e intente de nuevo.",
+      "No se pudo abrir el formulario de pago. No se cobró nada: revise su conexión e intente de nuevo.",
+    "reservation.pay.error.source":
+      "Culqi no pudo aceptar esos datos de pago, así que no se cobró nada. Revise los datos de su tarjeta, o su número de Yape y un nuevo código de aprobación, e intente de nuevo.",
+    "reservation.pay.error.yapeLimit":
+      "Yape acepta pagos de hasta S/ 2,000, así que no se cobró nada. Pague este monto con tarjeta.",
     "reservation.pay.error.unavailable":
       "No pudimos enviar su pago y no se cobró nada. Sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
     "reservation.pay.error.retry":
       "El pago no se completó y no se cobró nada. Sus datos se conservan en esta página: vuelva a pagar.",
     "reservation.outcome.submitted.title": "Pago enviado, consultando su estado",
     "reservation.outcome.submitted.body":
-      "Enviamos su pago pero no recibimos respuesta, así que su tarjeta podría haberse cobrado. No pague de nuevo: consulte su estado aquí o escríbanos por WhatsApp o por correo si necesita ayuda.",
+      "Enviamos su pago pero no recibimos respuesta, así que el cobro podría haberse realizado. No pague de nuevo: consulte su estado aquí o escríbanos por WhatsApp o por correo si necesita ayuda.",
     "reservation.outcome.reservation_changed.title": "El hotel actualizó su reserva",
     "reservation.outcome.reservation_changed.body":
       "Recibimos su pago y luego el hotel modificó esta reserva. Escríbanos por WhatsApp o por correo con su referencia para confirmar su estado actual.",
@@ -1211,6 +1230,13 @@ export const ui = {
     "reservation.outcome.declined.reassurance":
       "Sus datos y las condiciones aceptadas se conservan.",
     "reservation.outcome.declined.amount": "Monto por pagar",
+    "reservation.outcome.declined_yape.title": "Su pago con Yape fue rechazado",
+    "reservation.outcome.declined_yape.body":
+      "No se cobró nada. Puede que el código de aprobación haya vencido o se haya escrito mal, que las compras por internet estén desactivadas en Yape o que se haya alcanzado su límite de Yape. Genere un nuevo código en la app de Yape e intente de nuevo, o pague con tarjeta.",
+    "reservation.outcome.declined_yape.eyebrow": "Pago no completado",
+    "reservation.outcome.declined_yape.reassurance":
+      "Sus datos y las condiciones aceptadas se conservan.",
+    "reservation.outcome.declined_yape.amount": "Monto por pagar",
     "reservation.outcome.authentication_expired.title": "La verificación del banco venció",
     "reservation.outcome.authentication_expired.body":
       "La verificación quedó sin terminar y este intento de pago se cerró. No se cobró nada.",
@@ -1221,7 +1247,7 @@ export const ui = {
     "reservation.outcome.contactSaved": "Contacto guardado · condiciones aceptadas",
     "reservation.outcome.processing.title": "Confirmando su pago",
     "reservation.outcome.processing.body":
-      "Estamos verificando su pago con el procesador de tarjetas. No pague de nuevo: la verificación continúa aunque cierre esta página.",
+      "Estamos verificando su pago con el procesador de pagos. No pague de nuevo: la verificación continúa aunque cierre esta página.",
     "reservation.outcome.processing.delayed":
       "La verificación está tardando más de lo habitual. Continúa aunque cierre esta página, así que no pague de nuevo. Consulte el estado aquí más tarde o escríbanos por WhatsApp o por correo si necesita ayuda.",
     "reservation.outcome.paid_awaiting_reservation.title": "Pago recibido, guardando su reserva",
@@ -1241,6 +1267,7 @@ export const ui = {
     "reservation.outcome.outstanding": "Saldo pendiente",
     "reservation.outcome.awaiting": "Por resolver",
     "reservation.outcome.retry": "Pagar con otra tarjeta",
+    "reservation.outcome.retryYape": "Intentar con un nuevo código de Yape",
     "reservation.outcome.verifyBank": "Abrir la verificación del banco",
     "reservation.outcome.check": "Consultar estado",
     "reservation.outcome.checking": "Consultando su pago…",

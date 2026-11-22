@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   PaymentInput,
+  PaymentMethod,
   RatePlanCode,
   ReservationDetail,
   ReservationDetailStatus,
@@ -364,12 +365,12 @@ export const couponIssueSchema = (maxCents: number, currency?: string) =>
   z.object({
     amount: refundAmount(maxCents, currency),
   });
-export const cardRefundSchema = (maxCents: number, currency?: string) =>
+export const onlineRefundSchema = (maxCents: number, method: PaymentMethod, currency?: string) =>
   z.object({
     source: z.string(),
     amount: refundAmount(maxCents, currency).refine(
       (value) => (parseMajorToCents(value.trim()) ?? 0) >= culqiMinRefundCents,
-      `El reembolso a la tarjeta debe ser de al menos ${formatMoney(culqiMinRefundCents, currency)}.`,
+      `El reembolso ${method === "yape" ? "al Yape" : "a la tarjeta"} debe ser de al menos ${formatMoney(culqiMinRefundCents, currency)}.`,
     ),
     reason: refundReason,
   });

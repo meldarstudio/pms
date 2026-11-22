@@ -26,7 +26,7 @@ export const configurationSections = [
   {
     id: "payments",
     title: "Pagos",
-    description: "Pausa o reanuda los pagos con tarjeta de la web.",
+    description: "Pausa o reanuda los pagos en línea de la web.",
   },
   {
     id: "accounts",

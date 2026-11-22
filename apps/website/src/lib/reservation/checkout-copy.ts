@@ -64,6 +64,7 @@ export const payErrorCopy: Partial<Record<PaymentOutcome["kind"], string>> = {
   throttled: "reservation.pay.error.throttled",
   security_failed: "reservation.pay.error.securityFailed",
   security_unavailable: "reservation.pay.error.securityUnavailable",
+  yape_limit: "reservation.pay.error.yapeLimit",
   unavailable: "reservation.pay.error.unavailable",
 };
 
@@ -115,11 +116,14 @@ export function problemPresentation(problem: Problem) {
 
 export type OutcomeRow = { labelKey: string; value: string | { cents: number } };
 
+function outcomeCopyState(payment: GuestPayment) {
+  if (payment.state !== "declined") return payment.state;
+  if (payment.declineReason === "authentication_expired") return "authentication_expired";
+  return payment.method === "yape" ? "declined_yape" : "declined";
+}
+
 export function outcomePresentation(payment: GuestPayment) {
-  const copyState =
-    payment.state === "declined" && payment.declineReason === "authentication_expired"
-      ? "authentication_expired"
-      : payment.state;
+  const copyState = outcomeCopyState(payment);
   const key = `reservation.outcome.${copyState}`;
   const { reservation } = payment;
   const rows: OutcomeRow[] =
@@ -155,6 +159,8 @@ export function outcomePresentation(payment: GuestPayment) {
       payment.state === "processing" && payment.delayed
         ? "reservation.outcome.processing.delayed"
         : `${key}.body`,
+    retryKey:
+      copyState === "declined_yape" ? "reservation.outcome.retryYape" : "reservation.outcome.retry",
     rows,
   };
 }

@@ -344,8 +344,14 @@ unexpired quote. Refreshing a quote keeps that acceptance only when the replacem
 the same room requests, stay, occupancies, nightly prices and terms.
 _Avoid_: Payment, confirmation, reservation
 
+**Online payment / Pago en línea**:
+A payment made by the booking contact in a public checkout through the payment provider,
+by card or Yape. Its method says how the guest paid; being online is what makes it
+provider-refundable and never voidable.
+_Avoid_: Card payment when Yape is included, web payment
+
 **Public payment admission / Pagos en línea**:
-The owner's server-enforced switch for new public card payments, off by default. The owner
+The owner's server-enforced switch for new online payments, by card or Yape, off by default. The owner
 pauses it in Configuración for provider maintenance or outages. Pausing it
 stops new charges even in open public checkouts, but not status reads, staff work, recovery
 of earlier payment attempts, or completing bank authentication already waiting on an attempt.
@@ -354,9 +360,10 @@ _Avoid_: Maintenance mode, closing sales
 **Payment attempt**:
 A request to charge a public checkout's accepted quote, recorded before contacting the
 provider. Its contact is that checkout acceptance's. An unknown result is resolved by
-provider lookup, not another charge. Bank authentication continues that same attempt and
-source, even after the quote expires; a bank refusing it, or 24 hours without finishing it,
-fails the attempt so another card can pay.
+provider lookup, not another charge. A card attempt's bank authentication continues that
+same attempt and source, even after the quote expires; a bank refusing it, or 24 hours
+without finishing it, fails the attempt so another card or Yape approval code can pay.
+Yape has no bank authentication and is not offered above its per-payment limit.
 _Avoid_: Payment, retry
 
 **Confirmation email**:

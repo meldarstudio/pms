@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ONLINE_PAYMENT_SOURCE } from "./online-payment";
 export { normalizePhone, phoneErrors } from "./phone";
 
 export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD");
@@ -399,7 +400,7 @@ export const checkoutPaymentSchema = z
     sourceId: z
       .string()
       .trim()
-      .regex(/^tkn_[\w-]{1,200}$/, "only card payments are accepted"),
+      .regex(ONLINE_PAYMENT_SOURCE, "only card and Yape payments are accepted"),
     deviceFingerprint: z.string().trim().min(1).max(200).optional(),
     turnstileToken: requiredText(2048, "payment security check is required"),
   })

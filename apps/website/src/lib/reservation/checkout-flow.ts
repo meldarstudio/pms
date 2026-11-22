@@ -37,6 +37,7 @@ import type { AuthenticationParameters } from "./providers";
 import { ratesOpen, type StaySearch } from "./search";
 import type { RoomId } from "@/lib/rooms";
 import type { CheckoutAccess } from "./summary";
+import { yapeAllowed } from "@pms/shared/online-payment";
 import type { PhoneDraft } from "@pms/shared/phone";
 import { emptyPhone } from "./phone";
 
@@ -202,6 +203,7 @@ export type Event =
   | { type: "securityTokenRead"; token: string }
   | { type: "cardFormResolved"; sourceId: string | null }
   | { type: "cardFormFailed" }
+  | { type: "cardFormRefused" }
   | { type: "fingerprintRead"; fingerprint: string | null }
   | { type: "bankParameters"; parameters: AuthenticationParameters }
   | { type: "bankIncomplete" }
@@ -228,7 +230,7 @@ export type Effect =
   | { type: "startSecurityCheck"; lang: Lang }
   | { type: "readSecurityToken" }
   | { type: "resetSecurityCheck" }
-  | ({ type: "openCardForm"; lang: Lang } & CardCharge)
+  | ({ type: "openCardForm"; lang: Lang; yape: boolean } & CardCharge)
   | ({ type: "deviceFingerprint" } & CardCharge)
   | ({ type: "openBank"; sourceId: string } & CardCharge)
   | { type: "storeCheckout"; key: string; checkout: StoredCheckout }
@@ -805,7 +807,13 @@ function afterSecurityToken(c: Ctx, token: string) {
     return release(c);
   }
   c.s.pay = { kind: "cardForm", turnstileToken: token };
-  c.fx.push({ type: "openCardForm", lang: c.s.lang, ...cardCharge(c, view) });
+  const charge = cardCharge(c, view);
+  c.fx.push({
+    type: "openCardForm",
+    lang: c.s.lang,
+    ...charge,
+    yape: yapeAllowed(charge.amountCents),
+  });
 }
 
 function afterCardForm(c: Ctx, sourceId: string | null) {
@@ -1049,6 +1057,10 @@ function handle(c: Ctx, event: Event) {
     case "cardFormFailed":
       if (c.s.pay.kind !== "cardForm") return;
       c.s.formError = "reservation.pay.error.card";
+      return release(c);
+    case "cardFormRefused":
+      if (c.s.pay.kind !== "cardForm") return;
+      c.s.formError = "reservation.pay.error.source";
       return release(c);
     case "fingerprintRead":
       return afterFingerprint(c, event.fingerprint);

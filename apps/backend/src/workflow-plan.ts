@@ -368,7 +368,7 @@ function applyRefunds({ state, refundActions, handedBack, account, today, now }:
         reservationId: state.reservation.id,
         paymentId: action.paymentId,
         amountCents: action.amountCents,
-        method: culqi ? "card" : action.method,
+        method: culqi ? payment.method : action.method,
         reference: culqi ? null : (action.reference ?? null),
         reason: action.reason,
         status: "requested",

@@ -33,6 +33,7 @@ import {
   checkoutPayment,
   failCheckoutAuthentication,
   payableQuote,
+  requireMethodAllows,
   TOO_MANY_PAYMENTS,
 } from "../public-payments";
 import { limitBySourceIp, requireWithinLimit, trustedSourceIp } from "../rate-limit";
@@ -198,6 +199,7 @@ publicRoutes.post(
     const payable = await payableQuote(db, checkout, input.quoteId, guestContext(c));
     await requireWithinLimit(c, "PAYMENT_IP_LIMITER", trustedSourceIp(c), TOO_MANY_PAYMENTS);
     await requireWithinLimit(c, "PAYMENT_CHECKOUT_LIMITER", checkout.id, TOO_MANY_PAYMENTS);
+    requireMethodAllows(payable, input.sourceId);
     await requireTurnstile(c.env, input.turnstileToken, trustedSourceIp(c));
     const { created, payment } = await chargeCheckout(db, checkout, payable, input, {
       ...context,

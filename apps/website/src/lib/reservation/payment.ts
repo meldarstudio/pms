@@ -28,6 +28,7 @@ export type PaymentOutcome =
   | { kind: "throttled" }
   | { kind: "security_failed" }
   | { kind: "security_unavailable" }
+  | { kind: "yape_limit" }
   | { kind: "expired" }
   | { kind: "replaced" }
   | { kind: "sold_out"; room?: number }
@@ -52,6 +53,7 @@ const SECURITY_UNAVAILABLE = new Set([
 const GuestPayment = Schema.Struct({
   attemptId: Schema.String,
   state: Schema.Literals(paymentStates),
+  method: Schema.optionalKey(Schema.Literals(["card", "yape"])),
   declineReason: Schema.optionalKey(Schema.Literal("authentication_expired")),
   amountCents: Schema.Number,
   currency: Schema.String,
@@ -77,6 +79,7 @@ const refusal = (status: number, error: string | null, room?: number): PaymentOu
   if (error === "online payments are paused") return { kind: "paused" };
   if (error === "payment security check failed") return { kind: "security_failed" };
   if (SECURITY_UNAVAILABLE.has(error)) return { kind: "security_unavailable" };
+  if (error === "Yape payment exceeds its limit") return { kind: "yape_limit" };
   if (error === "quote has expired") return { kind: "expired" };
   if (REPLACED_QUOTE.has(error)) return { kind: "replaced" };
   if (status === 409 && error === "no availability") return { kind: "sold_out", room };

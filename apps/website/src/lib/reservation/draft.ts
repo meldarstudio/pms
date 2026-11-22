@@ -1,3 +1,4 @@
+import { ONLINE_PAYMENT_SOURCE } from "@pms/shared/online-payment";
 import type { ContactDraft } from "./checkout";
 import { phoneKey, storedPhone } from "./phone";
 import { readSession, writeSession } from "./session-storage";
@@ -56,8 +57,6 @@ export function clearContact() {
   }
 }
 
-const CARD_SOURCE = /^tkn_[\w-]{1,200}$/;
-
 export type StoredCard = { sourceId: string; attemptId: string };
 
 const ATTEMPT_ID = /^[0-9a-f-]{36}$/i;
@@ -65,7 +64,7 @@ const ATTEMPT_ID = /^[0-9a-f-]{36}$/i;
 export function isStoredCard(value: unknown): value is StoredCard {
   if (typeof value !== "object" || value === null) return false;
   const card = value as StoredCard;
-  return CARD_SOURCE.test(card.sourceId) && ATTEMPT_ID.test(card.attemptId);
+  return ONLINE_PAYMENT_SOURCE.test(card.sourceId) && ATTEMPT_ID.test(card.attemptId);
 }
 
 export function storedCard(selection: string) {

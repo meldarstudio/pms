@@ -39,7 +39,7 @@ export const reservationConditions: LocalizedLegalDocument = {
       {
         heading: "Pago y confirmación",
         items: [
-          "En línea se paga con tarjeta, a través de Culqi.",
+          "En línea se paga con tarjeta o con Yape, a través de Culqi. Yape acepta pagos de hasta S/ 2,000.",
           "Antes de pagar verá el monto a pagar ahora, lo que queda por pagar en el hotel y las condiciones de cancelación. El precio se mantiene por unos minutos; si cambia, verá el nuevo antes de cualquier cobro.",
           "La reserva queda confirmada cuando el pago se confirma y la reserva se guarda. Verá la confirmación en pantalla y le enviaremos un correo.",
           "El saldo se paga al hacer el check-in, en efectivo, tarjeta, Yape o transferencia bancaria.",
@@ -66,7 +66,7 @@ export const reservationConditions: LocalizedLegalDocument = {
         heading: "Devoluciones",
         items: [
           "Si queda un saldo a su favor, solicítelo por WhatsApp o correo con la referencia de su reserva.",
-          "Lo devolvemos por el mismo medio de pago: a la misma tarjeta, si pagó con tarjeta, o por transferencia a la cuenta que usted indique, si pagó en efectivo, Yape o transferencia.",
+          "Lo devolvemos por el mismo medio de pago: a la misma tarjeta, si pagó con tarjeta; al mismo Yape, si pagó con Yape en línea; o por transferencia a la cuenta que usted indique, si pagó en efectivo, con Yape en el hotel o por transferencia.",
           "Emitimos la devolución dentro de los 7 días hábiles siguientes a su aprobación. El tiempo que tarde su banco en reflejarla no depende del hotel.",
           "Solo con su acuerdo podemos convertir el saldo a su favor en un cupón para una estadía futura en lugar de devolver el dinero.",
         ],
@@ -119,7 +119,7 @@ export const reservationConditions: LocalizedLegalDocument = {
       {
         heading: "Payment and confirmation",
         items: [
-          "Online payment is by card, processed by Culqi.",
+          "Online payment is by card or Yape, processed by Culqi. Yape accepts payments of up to S/ 2,000.",
           "Before paying you will see the amount due now, what remains to pay at the hotel and the cancellation conditions. The price is held for a few minutes; if it changes, you will see the new one before any charge.",
           "The reservation is confirmed once the payment is confirmed and the reservation is saved. You will see the confirmation on screen and we will email it to you.",
           "The balance is paid at check-in by cash, card, Yape or bank transfer.",
@@ -146,7 +146,7 @@ export const reservationConditions: LocalizedLegalDocument = {
         heading: "Refunds",
         items: [
           "If there is a balance in your favor, request it by WhatsApp or email with your reservation reference.",
-          "We refund it by the same payment method: to the same card if you paid by card, or by bank transfer to the account you name if you paid by cash, Yape or transfer.",
+          "We refund it by the same payment method: to the same card if you paid by card; to the same Yape if you paid by Yape online; or by bank transfer to the account you name if you paid by cash, by Yape at the hotel or by transfer.",
           "We issue the refund within 7 business days of approving it. The time your bank takes to show it is outside the hotel's control.",
           "Only with your agreement can we turn a balance in your favor into a coupon for a future stay instead of returning the money.",
         ],
