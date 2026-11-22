@@ -30,7 +30,7 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
 
   await expect(page).toHaveURL(/\/reservar\/revisar\/\?/);
   expect([...new URL(page.url()).searchParams.keys()].toSorted()).toEqual(
-    ["adults", "checkIn", "checkOut", "children", "plan", "room"].toSorted(),
+    ["adults", "checkIn", "checkOut", "children", "plan", "types"].toSorted(),
   );
   const stayDetails = page.getByRole("complementary", { name: "Su estadía" });
   await expect(stayDetails).toContainText("Suite Matrimonial");
@@ -75,7 +75,7 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
 });
 
 test("a room lost before review returns to the rooms without picking another", async ({ page }) => {
-  await page.goto(reviewPath(doubleSoldOutStay(), { room: "double", plan: "flexible" }));
+  await page.goto(reviewPath(doubleSoldOutStay(), { types: "double", plan: "flexible" }));
 
   await expect(
     page.getByRole("heading", { name: "Esta habitación ya no está disponible para estas fechas" }),

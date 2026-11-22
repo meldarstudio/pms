@@ -8,7 +8,7 @@
   import type { SavedConfirmation } from "./review-view";
   import { stayLabels } from "./stay";
 
-  let { view, room, reservation, currency }: SavedConfirmation = $props();
+  let { view, rooms, reservation, currency }: SavedConfirmation = $props();
   const { say, lang } = getReview();
   const stay = $derived(stayLabels(view, say, lang));
   const money = (cents: number) => formatMoney(cents, currency);
@@ -40,13 +40,15 @@
   </div>
   <section class="confirmation-print-stay" aria-labelledby="print-stay-title">
     <h2 id="print-stay-title">{say("reservation.review.stay")}</h2>
-    <div class="confirmation-print-room">
-      <div>
-        <h3>{room.name}</h3>
-        <p>{room.beds}</p>
+    {#each rooms as room, index (index)}
+      <div class="confirmation-print-room">
+        <div>
+          <h3>{room.name}</h3>
+          <p>{room.beds}</p>
+        </div>
+        <p>{stay.rooms[index]}</p>
       </div>
-      <p>{stay.guests}</p>
-    </div>
+    {/each}
     <dl class="confirmation-print-stay-facts">
       <div>
         <dt>{say("reservation.review.checkIn")}</dt>

@@ -15,9 +15,11 @@ test("homepage search opens the rooms for the chosen stay and keeps it on return
   await arrival.click();
   await pickRangeDate(page, stay.checkIn);
   await pickRangeDate(page, stay.checkOut);
-  await page.getByRole("button", { name: /Huéspedes/ }).click();
+  await page.getByRole("button", { name: /Habitaciones y huéspedes/ }).click();
   await page.getByRole("button", { name: "Aumentar niños" }).click();
-  await expect(page.getByRole("button", { name: /Huéspedes/ })).toContainText("2 adultos, 1 niño");
+  await expect(page.getByRole("button", { name: /Habitaciones y huéspedes/ })).toContainText(
+    "1 habitación, 2 huéspedes",
+  );
   await page
     .locator("#availability")
     .getByRole("button", { name: "Consultar disponibilidad" })
@@ -26,11 +28,11 @@ test("homepage search opens the rooms for the chosen stay and keeps it on return
   const params = new URLSearchParams({
     checkIn: stay.checkIn,
     checkOut: stay.checkOut,
-    adults: "2",
+    adults: "1",
     children: "1",
   });
   await expect(page).toHaveURL(new RegExp(`/habitaciones/\\?${params.toString()}$`));
-  await expect(page.locator("#stay-guests-value")).toHaveText("2 adultos, 1 niño");
+  await expect(page.locator("#stay-guests-value")).toHaveText("1 habitación, 2 huéspedes");
   await expect(page.locator('input[name="checkOut"]')).toHaveValue(stay.checkOut);
   await expect(page.getByRole("article", { name: "Suite Matrimonial" })).toBeVisible();
 
@@ -38,5 +40,5 @@ test("homepage search opens the rooms for the chosen stay and keeps it on return
   const form = page.locator("#availability");
   await expect(form.locator('input[name="checkIn"]')).toHaveValue(stay.checkIn);
   await expect(form.locator('input[name="checkOut"]')).toHaveValue(stay.checkOut);
-  await expect(form.locator("#stay-guests-value")).toHaveText("2 adultos, 1 niño");
+  await expect(form.locator("#stay-guests-value")).toHaveText("1 habitación, 2 huéspedes");
 });

@@ -65,8 +65,10 @@ export const stayBill = (
     couponMovements: [],
   });
 
-export const quoteBill = (quote: BillableRoom & { terms: { paymentSchedule: PaymentSchedule } }) =>
-  stayBill([quote], { discountCents: 0, paymentSchedule: quote.terms.paymentSchedule });
+export const quoteBill = (quote: {
+  rooms: BillableRoom[];
+  terms: { paymentSchedule: PaymentSchedule };
+}) => stayBill(quote.rooms, { discountCents: 0, paymentSchedule: quote.terms.paymentSchedule });
 
 export function roomCharges(room: BillableRoom, released: boolean) {
   const subtotalCents = room.nights.reduce((sum, night) => sum + night.priceCents, 0);

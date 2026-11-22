@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
-import type { CheckoutLanguage } from "@pms/shared";
+import type { CheckoutLanguage, RoomRequest } from "@pms/shared";
 import type { PricedNight } from "../lib/pricing";
 import type { RatePlanCode, RatePlanTerms } from "../lib/rate-plans";
 
@@ -81,13 +81,9 @@ export const publicCheckouts = sqliteTable(
   {
     id: text("id").primaryKey(),
     tokenHash: text("token_hash").notNull().unique(),
-    roomTypeId: text("room_type_id")
-      .notNull()
-      .references(() => roomTypes.id),
     checkIn: text("check_in").notNull(),
     checkOut: text("check_out").notNull(),
-    adults: integer("adults").notNull(),
-    children: integer("children").notNull(),
+    rooms: text("rooms", { mode: "json" }).$type<RoomRequest[]>().notNull().default([]),
     ratePlan: text("rate_plan").$type<RatePlanCode>().notNull(),
     language: text("language").$type<CheckoutLanguage>().notNull(),
     createdAt: text("created_at").notNull(),
@@ -100,16 +96,15 @@ export const publicCheckouts = sqliteTable(
   ],
 );
 
+export type QuotedRoom = RoomRequest & { nights: PricedNight[] };
+
 export const quotes = sqliteTable(
   "quotes",
   {
     id: text("id").primaryKey(),
-    roomTypeId: text("room_type_id").notNull(),
     checkIn: text("check_in").notNull(),
     checkOut: text("check_out").notNull(),
-    adults: integer("adults").notNull(),
-    children: integer("children").notNull(),
-    nights: text("nights", { mode: "json" }).$type<PricedNight[]>().notNull(),
+    rooms: text("rooms", { mode: "json" }).$type<QuotedRoom[]>().notNull().default([]),
     terms: text("terms", { mode: "json" }).$type<RatePlanTerms>().notNull(),
     createdAt: text("created_at").notNull(),
     expiresAt: text("expires_at").notNull(),

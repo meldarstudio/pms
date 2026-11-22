@@ -22,12 +22,14 @@
     text,
     details,
     offers,
+    marked = false,
     children,
   }: {
     room: RoomView;
     text: RoomsBookingText;
     details: StayDetails;
     offers?: RoomTypeOffers;
+    marked?: boolean;
     children: Snippet;
   } = $props();
 
@@ -78,7 +80,13 @@
   </section>
 {/snippet}
 
-<article aria-labelledby={nameId} class="flex h-full flex-col border border-stone-200 bg-white">
+<article
+  aria-labelledby={nameId}
+  class={[
+    "flex h-full flex-col border bg-white",
+    marked ? "border-accent-700 outline-2 outline-accent-700" : "border-stone-200",
+  ]}
+>
   {#if room.photos.length}
     <RoomGallery room={room.name} photos={room.photos} {text} />
   {/if}

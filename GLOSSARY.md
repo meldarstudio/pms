@@ -83,7 +83,7 @@ ownership, reachability, or WhatsApp support.
 _Avoid_: Verified phone
 
 **Guest list**:
-The optional named staying guests, which may be incomplete even after check-in.
+The optional named staying guests, which may be incomplete even after check-in. The website does not collect one.
 _Avoid_: Occupancy
 
 **Reservation notes**:
@@ -108,8 +108,12 @@ is not check-in time and not reception closing; staff reservations ignore it.
 _Avoid_: Check-in cutoff, reception hours
 
 **Stay draft**:
-Unsaved proposed stay dates, reserved rooms, assignments, and occupancy.
-_Avoid_: Saved reservation, preview reservation
+Unsaved proposed stay dates, rooms, assignments, and occupancy. An online stay draft has shared dates, room requests, and no room assignments.
+_Avoid_: Saved reservation, preview reservation, public checkout
+
+**Room request**:
+A room the guest has asked for in an online stay draft: an occupancy, and a room type once chosen. It is not a reserved room.
+_Avoid_: Reserved room, quantity, booking
 
 **Check-in / checkout**:
 Acknowledgement that a stay has begun/ended, distinct from its booked dates.
@@ -141,7 +145,7 @@ Returning a cancelled or no-show reservation to confirmed, checked in, or checke
 _Avoid_: Undelete, check-in
 
 **Unfulfilled**:
-An online reservation paid after its room type became unavailable or its check-in
+An online reservation paid after any reserved room became unavailable or its check-in
 date passed, holding no inventory while its payment remains refund due.
 _Avoid_: Cancelled, held, expired
 
@@ -160,8 +164,8 @@ and new types stay unpublished until listed.
 _Avoid_: Online room, public room
 
 **Offer**:
-A published room type's price and terms under one rate plan for searched dates and
-guests, shown before a quote is created.
+A published room type's price and terms under one rate plan for searched dates, shown
+before a quote is created.
 _Avoid_: Quote, availability
 
 **Room-type draft**:
@@ -317,15 +321,15 @@ counted in the bill or amount paid. Voiding returns no money and cannot be undon
 _Avoid_: Refund, deleted payment, payment correction
 
 **Quote**:
-An online price, rate plan, and amount-to-pay offer valid for 10 minutes, without
-holding inventory.
+An online price, rate plan, and required initial payment for every room request in one
+stay, valid for 10 minutes, without holding inventory.
 _Avoid_: Hold, preview, reservation
 
 **Public checkout**:
-A guest's private online review of one selected stay, room type, occupancy, and rate plan,
-reachable only with its secret token. It holds that selection's quotes and agreement
-acceptances.
-_Avoid_: Cart, session, reservation
+A guest's private online review of a stay draft's room requests under one rate plan, opened
+when the guest continues to review, reachable only with its secret token. It holds that
+selection's quotes and agreement acceptances.
+_Avoid_: Cart, session, reservation, stay draft
 
 **Abandoned public checkout**:
 A public checkout with no reservation and no payment attempt other than failed ones, whose
@@ -337,7 +341,7 @@ _Avoid_: Expired checkout, cart abandonment
 A booking contact's acceptance of one quote's terms within a public checkout, recorded
 before any payment. A new acceptance is explicit and only of the checkout's latest
 unexpired quote. Refreshing a quote keeps that acceptance only when the replacement has
-the same room, stay, occupancy, nightly prices and terms.
+the same room requests, stay, occupancies, nightly prices and terms.
 _Avoid_: Payment, confirmation, reservation
 
 **Public payment admission / Pagos en línea**:

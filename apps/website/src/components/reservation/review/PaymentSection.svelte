@@ -52,7 +52,12 @@
         <strong class="mb-1 block font-semibold text-amber-900">
           {say("reservation.review.cancellationEnded")}
         </strong>
-        {say("reservation.review.lateCancellationCharge", { amount })}
+        {say(
+          view.rooms.length > 1
+            ? "reservation.review.lateCancellationChargeRooms"
+            : "reservation.review.lateCancellationCharge",
+          { amount },
+        )}
       {:else if view.ratePlan === "non_refundable"}
         <strong class="mb-1 block font-semibold text-stone-900">
           {say("reservation.plan.non_refundable")}

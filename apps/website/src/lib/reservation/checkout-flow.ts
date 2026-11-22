@@ -34,7 +34,8 @@ import {
 import { contactKey, isStoredCard, type StoredCard, type StoredCheckout } from "./draft";
 import { allowsNewPayment, type GuestPayment, type PaymentOutcome } from "./payment";
 import type { AuthenticationParameters } from "./providers";
-import type { StaySearch } from "./search";
+import { ratesOpen, type StaySearch } from "./search";
+import type { RoomId } from "@/lib/rooms";
 import type { CheckoutAccess } from "./summary";
 import type { PhoneDraft } from "@pms/shared/phone";
 import { emptyPhone } from "./phone";
@@ -238,24 +239,23 @@ export type Effect =
   | { type: "schedulePoll" }
   | { type: "cancelPoll" }
   | { type: "copyAccessLink"; token: string }
+  | { type: "returnToRoom"; room: number }
   | { type: "focus"; target: FocusTarget };
 
 export type Transition = { state: State; effects: Effect[] };
 
 export function checkoutSelection(
   search: StaySearch,
-  roomTypeId: string | null | undefined,
+  roomTypeIdOf: (room: RoomId) => string | null | undefined,
 ): CheckoutSelection | null {
-  const { room, plan, checkIn, checkOut } = search;
-  if (!room || !plan || !checkIn || !checkOut || !roomTypeId) return null;
-  return {
-    roomTypeId,
-    checkIn,
-    checkOut,
-    adults: search.adults,
-    children: search.children,
-    ratePlan: plan,
-  };
+  const { plan, checkIn, checkOut } = search;
+  if (!plan || !checkIn || !checkOut || !ratesOpen(search)) return null;
+  const rooms = search.requests.map(({ room, adults, children }) => {
+    const roomTypeId = room ? roomTypeIdOf(room) : null;
+    return roomTypeId ? { roomTypeId, adults, children } : null;
+  });
+  if (rooms.some((room) => room === null)) return null;
+  return { checkIn, checkOut, ratePlan: plan, rooms: rooms as CheckoutSelection["rooms"] };
 }
 
 type Ctx = { s: State; fx: Effect[] };
@@ -353,7 +353,10 @@ function showProblem(c: Ctx, problem: Problem) {
   setStatus(c, "");
   c.s.reviewShown = false;
   c.s.problem = problem;
-  focus(c, "problemTitle");
+  const room = "room" in problem ? problem.room : undefined;
+  if (room !== undefined && (c.s.selection?.rooms.length ?? 0) > 1)
+    c.fx.push({ type: "returnToRoom", room });
+  else focus(c, "problemTitle");
 }
 
 function restoreDraft(c: Ctx, draft: Draft) {
@@ -571,7 +574,7 @@ function settlePayment(c: Ctx, outcome: PaymentOutcome, releasesPay: boolean) {
     return done();
   }
   if (outcome.kind === "sold_out") {
-    showProblem(c, { kind: "sold_out" });
+    showProblem(c, outcome);
     return done();
   }
   if (outcome.kind === "denied") return load(c, releasesPay);

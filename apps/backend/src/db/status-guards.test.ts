@@ -47,8 +47,9 @@ const guards: Guard[] = [
     message: "invalid payment attempt status",
     unrelatedColumn: "failure_message",
     insert(id, status) {
-      db.prepare(`INSERT INTO quotes (id, room_type_id, check_in, check_out, adults, children, nights, terms, created_at, expires_at)
-        VALUES (?, 'type', '2026-10-20', '2026-10-21', 2, 0, '[{"date":"2026-10-20","priceCents":10000}]',
+      db.prepare(`INSERT INTO quotes (id, check_in, check_out, rooms, terms, created_at, expires_at)
+        VALUES (?, '2026-10-20', '2026-10-21',
+          '[{"roomTypeId":"type","adults":2,"children":0,"nights":[{"date":"2026-10-20","priceCents":10000}]}]',
           '{"plan":"flexible"}', '2026-10-05T15:00:00Z', '2026-10-05T15:10:00Z')`).run(id);
       db.prepare(`INSERT INTO payment_attempts (id, quote_id, amount_cents, currency, email, source_id, status, created_at, called_at)
         VALUES (?, ?, 10000, 'PEN', 'ana@example.com', 'tkn', ?, '2026-10-05', '2026-10-05')`).run(

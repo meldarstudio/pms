@@ -7,26 +7,29 @@
   import { PmsClient } from "@/lib/pms-client";
   import {
     fetchOffers,
-    lowestOffer,
     type OfferSearchResult,
     type SearchOutcome,
   } from "@/lib/reservation/offers";
   import {
+    ratesOpen,
     readSearch,
     searchParams,
     type RatePlanCode,
     type StaySearch,
   } from "@/lib/reservation/search";
+  import {
+    chooseRoom,
+    continueFromRoom,
+    editParty,
+    roomChoice,
+    settleRooms,
+    type OffersFor,
+    type RoomChoice,
+  } from "@/lib/reservation/stay-draft";
   import { resumeSearch, storeSearch } from "@/lib/reservation/stay-search-storage";
   import type { RoomId } from "@/lib/rooms";
   import RoomOffers from "./RoomOffers.svelte";
-  import {
-    belowHeader,
-    primary,
-    type Phase,
-    type RoomView,
-    type RoomsBookingProps,
-  } from "./room-view";
+  import { belowHeader, primary, type Phase, type RoomsBookingProps } from "./room-view";
   import type { RoomsBookingKey } from "./text";
 
   let {
@@ -48,11 +51,13 @@
   };
   const unavailableStates = ["sold_out", "too_many_guests", "offline"] as const;
   type HistoryWrite = "push" | "replace" | "none";
-  type PendingFocus = { kind: "rates" } | { kind: "room"; id: RoomId } | null;
+  type PendingFocus = { kind: "rates" } | { kind: "step" } | null;
 
   let address = $state.raw<StaySearch | null>(null);
   let phase = $state.raw<Phase>({ kind: "idle" });
-  let stayForm: { replaceStay: (stay: StaySearch) => void } | undefined;
+  let stayForm:
+    | { replaceStay: (stay: StaySearch) => void; keepDraft: (stay: StaySearch) => void }
+    | undefined;
   let root: HTMLDivElement;
   let loaded: { search: StaySearch; result: OfferSearchResult | null } | null = null;
   let offerSearch: Latest<PmsClient> | null = null;
@@ -61,34 +66,46 @@
   let problemPanel = $state<HTMLDivElement>();
   let problemTitle = $state<HTMLHeadingElement>();
   let noticePanel = $state<HTMLElement>();
+  const roomIds = $derived(rooms.map((room) => room.id));
 
   const result = $derived(
     phase.kind === "found" ? phase.result : phase.kind === "loading" ? phase.previous : undefined,
   );
-  const offersByType = $derived(new Map(result?.roomTypes.map((type) => [type.id, type])));
-  const offersFor = (room: RoomView) =>
-    room.pmsRoomTypeId ? offersByType.get(room.pmsRoomTypeId) : undefined;
-  const stateOf = (room: RoomView) => offersFor(room)?.availability ?? "offline";
-  const preferred = $derived(address?.room ?? null);
+  const offersIn = (found: OfferSearchResult | undefined): OffersFor => {
+    const byType = new Map(found?.roomTypes.map((type) => [type.id, type]));
+    return (id) => {
+      const room = rooms.find((candidate) => candidate.id === id);
+      return room?.pmsRoomTypeId ? byType.get(room.pmsRoomTypeId) : undefined;
+    };
+  };
+  const offersFor = $derived(offersIn(result));
+  const choiceOf = (id: RoomId): RoomChoice =>
+    address ? roomChoice(address, address.at, id, offersFor) : "offline";
+  const preferred = $derived(address?.featured ?? null);
   const ordered = $derived(
     preferred
       ? [...rooms].sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred))
       : rooms,
   );
-  const visibleRooms = $derived(
-    phase.kind === "found"
-      ? ordered.filter((room) => stateOf(room) !== "too_many_guests")
-      : ordered,
-  );
   const say = (key: RoomsBookingKey, values: Record<string, string | number> = {}) =>
     fill(text[key], values);
+  const nameOf = (id: RoomId | null) => rooms.find((room) => room.id === id)?.name ?? "";
   const notice = $derived.by(() => {
-    if (phase.kind !== "found") return null;
-    if (!rooms.some((room) => stateOf(room) === "available")) {
+    if (phase.kind !== "found" || !address || ratesOpen(address)) return null;
+    const current = address.requests[address.at];
+    if (current?.failed && current.room)
+      return {
+        title: say("reservation.room.failed", {
+          room: nameOf(current.room),
+          n: address.at + 1,
+        }),
+        reasons: [],
+      };
+    if (!rooms.some((room) => choiceOf(room.id) === "choosable")) {
       return {
         title: say("reservation.choose.noOffers.title"),
         reasons: unavailableStates.flatMap((state) => {
-          const names = rooms.filter((room) => stateOf(room) === state).map((room) => room.name);
+          const names = rooms.filter((room) => choiceOf(room.id) === state).map((room) => room.name);
           return names.length
             ? [say(`reservation.choose.reason.${state}`, { rooms: formatList(names, lang) })]
             : [];
@@ -96,11 +113,11 @@
       };
     }
     const room = rooms.find((candidate) => candidate.id === preferred);
-    if (!room || stateOf(room) === "available") return null;
+    if (!room || choiceOf(room.id) === "choosable") return null;
     return {
       title: say("reservation.room.preferredUnavailable", { room: room.name }),
       reasons:
-        stateOf(room) === "too_many_guests"
+        choiceOf(room.id) === "too_many_guests"
           ? [say("reservation.choose.reason.too_many_guests", { rooms: room.name })]
           : [],
     };
@@ -115,36 +132,25 @@
           : "",
   );
 
-  const openedRoom = (search: StaySearch | null) => (search?.plan ? search.room : null);
   const sameStay = (a: StaySearch, b: StaySearch) =>
-    a.checkIn === b.checkIn &&
-    a.checkOut === b.checkOut &&
-    a.adults === b.adults &&
-    a.children === b.children;
+    a.checkIn === b.checkIn && a.checkOut === b.checkOut;
   const sameAddress = (a: StaySearch, b: StaySearch) =>
-    sameStay(a, b) && a.room === b.room && a.plan === b.plan;
+    searchParams(a).toString() === searchParams(b).toString();
 
   function focusAfter(previous: StaySearch | null, next: StaySearch): PendingFocus {
-    const before = openedRoom(previous);
-    const after = openedRoom(next);
-    if (after && after !== before) return { kind: "rates" };
-    if (!after && before) return { kind: "room", id: before };
+    const before = previous !== null && ratesOpen(previous);
+    const after = ratesOpen(next);
+    if (after && !before) return { kind: "rates" };
+    if (!after && (before || (previous && previous.at !== next.at))) return { kind: "step" };
     return null;
   }
 
-  function settle(next: StaySearch, found: OfferSearchResult): StaySearch {
-    if (!next.room || !next.plan) return next;
-    const room = rooms.find((candidate) => candidate.id === next.room);
-    const offers = found.roomTypes.find((type) => type.id === room?.pmsRoomTypeId);
-    const lowest = offers?.availability === "available" ? lowestOffer(offers) : undefined;
-    if (!lowest) return { ...next, plan: null };
-    return offers?.offers.some((offer) => offer.ratePlan === next.plan)
-      ? next
-      : { ...next, plan: lowest.ratePlan };
-  }
+  const settle = (next: StaySearch, found: OfferSearchResult) =>
+    settleRooms(next, offersIn(found));
 
   function commit(next: StaySearch, write: HistoryWrite) {
     address = next;
+    stayForm?.keepDraft(next);
     const url = `?${searchParams(next).toString()}`;
     if (write === "push") history.pushState(null, "", url);
     else if (write === "replace") history.replaceState(history.state, "", url);
@@ -214,7 +220,6 @@
   onMount(() => {
     const island = startIsland(PmsClient.layer(apiBase));
     offerSearch = island.latest();
-    const roomIds = rooms.map((room) => room.id);
     search(resumeSearch(new URLSearchParams(location.search), roomIds));
     void tick().then(() => {
       const booking = root.closest("[data-rooms-booking]");
@@ -264,12 +269,17 @@
       heading.focus({ preventScroll: true });
       return;
     }
-    const button = focus?.kind === "room" && document.getElementById(`room-rates-${focus.id}`);
-    if (button) button.focus();
+    const step = document.getElementById("room-step-title");
+    const chosen = address?.requests[address.at]?.room;
+    const chosenButton = chosen ? document.getElementById(`room-rates-${chosen}`) : null;
+    if (focus?.kind === "step" && step) {
+      document.getElementById("offer-steps")?.scrollIntoView({ block: "start" });
+      step.focus({ preventScroll: true });
+    } else if (focus?.kind === "step" && chosenButton) chosenButton.focus();
     else if (position) {
       if (noticePanel) scrollToShow(noticePanel);
       else {
-        const first = ordered.find((room) => stateOf(room) === "available");
+        const first = ordered.find((room) => choiceOf(room.id) === "choosable");
         scrollToShow(
           document.getElementById("offer-steps"),
           first ? document.getElementById(`room-rates-${first.id}`) : null,
@@ -289,18 +299,27 @@
   }
 
   function openRoom(id: RoomId) {
-    const room = rooms.find((item) => item.id === id);
-    const offer = room && stateOf(room) === "available" ? lowestOffer(offersFor(room)) : undefined;
-    if (phase.kind !== "found" || !address || !offer) return;
-    show({ ...address, room: id, plan: offer.ratePlan }, "push", false);
+    if (phase.kind !== "found" || !address) return;
+    const next = chooseRoom(address, id, offersFor);
+    if (next !== address) show(next, "push", false);
+  }
+
+  function continueRoom() {
+    if (phase.kind !== "found" || !address) return;
+    const next = continueFromRoom(address, offersFor);
+    if (next !== address) show(next, "push", false);
+  }
+
+  function previousRoom() {
+    if (address && address.at > 0) show({ ...address, at: address.at - 1 }, "push", false);
   }
 
   function changeRoom() {
-    if (address) show({ ...address, plan: null }, "push", false);
+    if (address) show({ ...address, at: 0 }, "push", false);
   }
 
   function choosePlan(plan: RatePlanCode) {
-    if (address?.plan) commit({ ...address, plan }, "replace");
+    if (address && ratesOpen(address)) commit({ ...address, plan }, "replace");
   }
 </script>
 
@@ -310,8 +329,9 @@
       <StaySearchForm
         bind:this={stayForm}
         {lang}
+        {roomIds}
         copy={searchCopy}
-        onSearch={(next) => search({ ...next, room: preferred, plan: address?.plan ?? null })}
+        onSearch={(next) => search(address ? editParty(address, next) : next)}
       />
     </div>
     <p
@@ -362,13 +382,15 @@
   {text}
   {searchCopy}
   {reviewHref}
-  rooms={visibleRooms}
+  rooms={ordered}
   {details}
   {phase}
-  choice={address}
-  {offersByType}
+  draft={address}
+  {offersFor}
   onChooseDates={chooseDates}
   onOpenRoom={openRoom}
+  onContinue={continueRoom}
+  onPrevious={previousRoom}
   onChangeRoom={changeRoom}
   onPlan={choosePlan}
 />

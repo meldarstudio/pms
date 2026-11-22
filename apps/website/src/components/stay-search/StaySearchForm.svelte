@@ -29,12 +29,13 @@
     calendarFocus,
     dateFields,
     dateId,
+    canAddRoom,
     dayDisplay,
     departureBounds,
     guestFields,
-    guestSummary,
     initialSearch,
     openDatePicker,
+    partySummary,
     placeholder,
     rangePoint,
     restoreSearch,
@@ -49,9 +50,9 @@
   } from "./stay-search";
   import { wideScreen } from "@/lib/screen";
   import { fill } from "@/lib/reservation/format";
-  import type { StaySearch } from "@/lib/reservation/search";
+  import { newRoomRequest, type StaySearch } from "@/lib/reservation/search";
 
-  let { action, onSearch, lang, copy }: StaySearchProps = $props();
+  let { action, onSearch, lang, copy, roomIds = [] }: StaySearchProps = $props();
   const datePopup = createPopoverController<DateField>();
   const guestPopup = createPopoverController();
   const wide = new MediaQuery(wideScreen, true);
@@ -73,10 +74,18 @@
     search = shownSearch(stay);
   }
 
+  export function keepDraft(stay: StaySearch) {
+    search = shownSearch(stay);
+  }
+
   onMount(() => {
-    search = restoreSearch();
+    search = restoreSearch(roomIds);
     ready = true;
   });
+
+  const addRoom = () => (search.requests = [...search.requests, newRoomRequest()]);
+  const removeRoom = (index: number) =>
+    (search.requests = search.requests.filter((_, position) => position !== index));
 
   let mediaReady = false;
   $effect(() => {
@@ -129,7 +138,7 @@
     const first = stayProblems(search)[0];
     showProblems = Boolean(first);
     if (first) document.getElementById(dateId(first.field))?.focus();
-    else if (onSearch) onSearch({ ...search, room: null, plan: null });
+    else if (onSearch) onSearch(search);
     else if (action) submitSearch(action, search);
   }
 </script>
@@ -251,7 +260,7 @@
           class="lp-trigger"
           aria-labelledby="stay-guests-label stay-guests-value"
         >
-          <span id="stay-guests-value">{guestSummary(copy, search)}</span>
+          <span id="stay-guests-value">{partySummary(copy, search.requests)}</span>
           <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor">
             <path d="m4 6 4 4 4-4" />
           </svg>
@@ -263,28 +272,72 @@
               <PopoverClose class="lp-square" aria-label={copy.closeGuests}>×</PopoverClose>
             {/if}
           </div>
-          {#each guestFields as guest (guest.name)}
-            <div class="lp-stepper">
-              <span class="lp-label">{copy[guest.name]}</span>
-              <button
-                type="button"
-                class="lp-square"
-                disabled={search[guest.name] <= guest.min}
-                aria-label={copy[guest.decrease]}
-                onclick={() => search[guest.name]--}
-              >
-                −
-              </button>
-              <span>{search[guest.name]}</span>
-              <button
-                type="button"
-                class="lp-square"
-                disabled={search[guest.name] >= guest.max}
-                aria-label={copy[guest.increase]}
-                onclick={() => search[guest.name]++}
-              >
-                +
-              </button>
+          <div class="lp-stepper">
+            <span class="lp-label">{copy.rooms}</span>
+            <button
+              type="button"
+              class="lp-square"
+              disabled={search.requests.length <= 1}
+              aria-label={copy.decreaseRooms}
+              onclick={() => removeRoom(search.requests.length - 1)}
+            >
+              −
+            </button>
+            <span>{search.requests.length}</span>
+            <button
+              type="button"
+              class="lp-square"
+              disabled={!canAddRoom(search.requests)}
+              aria-label={copy.increaseRooms}
+              onclick={addRoom}
+            >
+              +
+            </button>
+          </div>
+          {#if !canAddRoom(search.requests)}
+            <p class="lp-note">{copy.roomsLimit}</p>
+          {/if}
+          {#each search.requests as request, index (index)}
+            {@const several = search.requests.length > 1}
+            {@const room = fill(copy.roomNumber, { n: index + 1 })}
+            <div class="lp-room" role={several ? "group" : undefined} aria-label={several ? room : undefined}>
+              {#if several}
+                <div class="lp-room-header">
+                  <span class="lp-label">{room}</span>
+                  <button
+                    type="button"
+                    class="lp-remove"
+                    aria-label={fill(copy.removeRoomLabel, { n: index + 1 })}
+                    onclick={() => removeRoom(index)}
+                  >
+                    {copy.removeRoom}
+                  </button>
+                </div>
+              {/if}
+              {#each guestFields as guest (guest.name)}
+                <div class="lp-stepper">
+                  <span class="lp-label">{copy[guest.name]}</span>
+                  <button
+                    type="button"
+                    class="lp-square"
+                    disabled={request[guest.name] <= guest.min}
+                    aria-label={several ? `${copy[guest.decrease]} · ${room}` : copy[guest.decrease]}
+                    onclick={() => request[guest.name]--}
+                  >
+                    −
+                  </button>
+                  <span>{request[guest.name]}</span>
+                  <button
+                    type="button"
+                    class="lp-square"
+                    disabled={request[guest.name] >= guest.max}
+                    aria-label={several ? `${copy[guest.increase]} · ${room}` : copy[guest.increase]}
+                    onclick={() => request[guest.name]++}
+                  >
+                    +
+                  </button>
+                </div>
+              {/each}
             </div>
           {/each}
         </PopoverContent>
@@ -292,7 +345,11 @@
     </div>
     <button type="submit" class="lp-submit">{copy.submit}</button>
     {#each guestFields as guest (guest.name)}
-      <input type="hidden" name={guest.name} value={search[guest.name]} />
+      <input
+        type="hidden"
+        name={guest.name}
+        value={search.requests.map((request) => request[guest.name]).join(",")}
+      />
     {/each}
   </fieldset>
   <p class="sr-only" role="status" aria-atomic="true">{announcement}</p>

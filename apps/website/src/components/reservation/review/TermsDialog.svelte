@@ -55,10 +55,15 @@
         <div class="flex flex-col gap-3 text-sm leading-relaxed text-stone-700">
           <p data-schedule>
             {view && money
-              ? say(`reservation.review.schedule.${view.ratePlan}`, {
-                  now: money(view.quote.requiredInitialPaymentCents),
-                  remaining: money(view.quote.remainingScheduledCents),
-                })
+              ? say(
+                  view.ratePlan === "flexible" && view.rooms.length > 1
+                    ? "reservation.review.schedule.flexibleRooms"
+                    : `reservation.review.schedule.${view.ratePlan}`,
+                  {
+                    now: money(view.quote.requiredInitialPaymentCents),
+                    remaining: money(view.quote.remainingScheduledCents),
+                  },
+                )
               : ""}
           </p>
           <p data-terms-cancellation>

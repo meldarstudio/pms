@@ -7,9 +7,7 @@ import { quoteBill } from "./lib/reservation-bill";
 import type { OnlineArrivalCalendar } from "./property-calendar";
 import { requireNewOnlineArrival, requireStay } from "./rules";
 
-export type OfferSearch = { checkIn: string; checkOut: string; adults: number; children: number };
-
-export type RoomTypeAvailability = "available" | "sold_out" | "too_many_guests";
+export type OfferSearch = { checkIn: string; checkOut: string };
 
 export function publishedRoomTypeIds(setting: string | undefined): string[] {
   return [
@@ -47,15 +45,7 @@ export async function searchOffers(
     checkIn: search.checkIn,
     checkOut: search.checkOut,
     nights: dates.length,
-    adults: search.adults,
-    children: search.children,
     roomTypes: types.map((type) => {
-      const availability: RoomTypeAvailability =
-        search.adults > type.maxAdults || search.children > type.maxChildren
-          ? "too_many_guests"
-          : (occupied.get(type.id) ?? 0) < (counts.get(type.id) ?? 0)
-            ? "available"
-            : "sold_out";
       const priced = (terms: RatePlanTerms) =>
         priceNights({
           dates,
@@ -67,18 +57,15 @@ export async function searchOffers(
         id: type.id,
         maxAdults: type.maxAdults,
         maxChildren: type.maxChildren,
-        availability,
-        offers:
-          availability === "available"
-            ? planOffers(
-                search.checkIn,
-                context.today,
-                PLAN_ORDER.map((plan) => ({
-                  terms: ratePlans[plan],
-                  nights: priced(ratePlans[plan]),
-                })),
-              )
-            : [],
+        remaining: Math.max(0, (counts.get(type.id) ?? 0) - (occupied.get(type.id) ?? 0)),
+        offers: planOffers(
+          search.checkIn,
+          context.today,
+          PLAN_ORDER.map((plan) => ({
+            terms: ratePlans[plan],
+            nights: priced(ratePlans[plan]),
+          })),
+        ),
       };
     }),
   };
@@ -92,7 +79,7 @@ function planOffers(
   const flexible = plans.find(({ terms }) => terms.plan === "flexible");
   const flexibleCents = flexible ? totalCents(flexible.nights) : 0;
   return plans.map(({ terms, nights }) => {
-    const amounts = offerAmounts({ checkIn, terms, nights }, today);
+    const amounts = offerAmounts({ checkIn, terms, rooms: [{ nights }] }, today);
     return {
       ratePlan: terms.plan,
       totalCents: amounts.totalCents,
@@ -105,11 +92,11 @@ function planOffers(
 }
 
 export function offerAmounts(
-  offer: { checkIn: string; terms: RatePlanTerms; nights: PricedNight[] },
+  offer: { checkIn: string; terms: RatePlanTerms; rooms: { nights: PricedNight[] }[] },
   today: string,
 ) {
-  const { terms, nights } = offer;
-  const bill = quoteBill({ nights, terms });
+  const { terms, rooms } = offer;
+  const bill = quoteBill({ rooms, terms });
   const freeUntil = freeCancellationUntil(terms.cancellationPolicy, offer.checkIn);
   return {
     totalCents: bill.totalCents,
@@ -118,7 +105,7 @@ export function offerAmounts(
     cancellation: {
       freeCancellation: freeCancellationState(freeUntil, today),
       freeUntil,
-      chargeCents: chargeableCents(terms.cancellationPolicy, [{ nights }], 0),
+      chargeCents: chargeableCents(terms.cancellationPolicy, rooms, 0),
     },
   };
 }

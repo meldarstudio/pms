@@ -1,7 +1,13 @@
 import type { CheckoutAcceptance, PublicCheckoutCreate } from "@pms/shared";
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
-import { checkoutAcceptances, paymentAttempts, publicCheckouts, quotes } from "./db/schema";
+import {
+  checkoutAcceptances,
+  paymentAttempts,
+  publicCheckouts,
+  quotes,
+  type QuotedRoom,
+} from "./db/schema";
 import { HttpError } from "./http";
 import { latestCheckoutAttempt } from "./payment-attempts";
 import { addDays, nightsBetween } from "./lib/dates";
@@ -38,34 +44,31 @@ async function tokenHash(token: string) {
 const accessUntil = (checkout: Pick<PublicCheckout, "checkOut">) =>
   addDays(checkout.checkOut, ACCESS_DAYS_AFTER_CHECKOUT);
 
-async function availableQuote(db: Db, checkout: PublicCheckout, context: CheckoutContext) {
-  if (!context.published.includes(checkout.roomTypeId))
-    throw new HttpError(404, "room type not found");
-  const { quote, available } = await priceQuote(
+const priceCheckout = (db: Db, checkout: PublicCheckout, context: CheckoutContext) =>
+  priceQuote(
     db,
     {
-      roomTypeId: checkout.roomTypeId,
       checkIn: checkout.checkIn,
       checkOut: checkout.checkOut,
-      adults: checkout.adults,
-      children: checkout.children,
       ratePlan: checkout.ratePlan,
+      rooms: checkout.rooms,
     },
     { ...context, checkoutId: checkout.id },
   );
-  if (!available) throw new HttpError(409, "no availability");
-  return quote;
-}
 
 export async function startCheckout(db: Db, input: PublicCheckoutCreate, context: CheckoutContext) {
   const token = newToken();
   const checkout: PublicCheckout = {
     id: crypto.randomUUID(),
     tokenHash: await tokenHash(token),
-    ...input,
+    checkIn: input.checkIn,
+    checkOut: input.checkOut,
+    ratePlan: input.ratePlan,
+    language: input.language,
+    rooms: input.rooms,
     createdAt: context.now.toISOString(),
   };
-  const quote = await availableQuote(db, checkout, context);
+  const quote = await priceCheckout(db, checkout, context);
   await runBatch(db, [
     db.insert(publicCheckouts).values(checkout),
     db.insert(quotes).values(quote),
@@ -101,7 +104,7 @@ export function whenReplacementIsPriced(hook: (() => Promise<void>) | null) {
 export async function requoteCheckout(db: Db, checkout: PublicCheckout, context: CheckoutContext) {
   if (await latestCheckoutAttempt(db, checkout.id, { open: true }))
     throw new HttpError(409, CHECKOUT_HAS_PAYMENT);
-  const quote = await availableQuote(db, checkout, context);
+  const quote = await priceCheckout(db, checkout, context);
   const priced = afterReplacementPriced;
   afterReplacementPriced = null;
   if (priced) await priced();
@@ -119,12 +122,10 @@ export async function requoteCheckout(db: Db, checkout: PublicCheckout, context:
 
 async function insertQuoteUnlessOpenPayment(db: Db, quote: Quote) {
   await db.run(sql`INSERT INTO ${quotes} (
-      id, room_type_id, check_in, check_out, adults, children, nights, terms, created_at, expires_at,
-      checkout_id
+      id, check_in, check_out, rooms, terms, created_at, expires_at, checkout_id
     )
-    SELECT ${quote.id}, ${quote.roomTypeId}, ${quote.checkIn}, ${quote.checkOut}, ${quote.adults},
-      ${quote.children}, ${JSON.stringify(quote.nights)}, ${JSON.stringify(quote.terms)},
-      ${quote.createdAt}, ${quote.expiresAt}, ${quote.checkoutId}
+    SELECT ${quote.id}, ${quote.checkIn}, ${quote.checkOut}, ${JSON.stringify(quote.rooms)},
+      ${JSON.stringify(quote.terms)}, ${quote.createdAt}, ${quote.expiresAt}, ${quote.checkoutId}
     WHERE NOT EXISTS (
       SELECT 1 FROM ${paymentAttempts}
       WHERE ${paymentAttempts.checkoutId} = ${quote.checkoutId}
@@ -219,17 +220,24 @@ function retainedAcceptance(
 
 function sameMaterialOffer(accepted: Quote, next: Quote) {
   return (
-    accepted.roomTypeId === next.roomTypeId &&
     accepted.checkIn === next.checkIn &&
     accepted.checkOut === next.checkOut &&
-    accepted.adults === next.adults &&
-    accepted.children === next.children &&
-    sameNights(accepted.nights, next.nights) &&
+    accepted.rooms.length === next.rooms.length &&
+    accepted.rooms.every((room, index) => {
+      const other = next.rooms[index];
+      return (
+        other !== undefined &&
+        room.roomTypeId === other.roomTypeId &&
+        room.adults === other.adults &&
+        room.children === other.children &&
+        sameNights(room.nights, other.nights)
+      );
+    }) &&
     sameTerms(accepted.terms, next.terms)
   );
 }
 
-function sameNights(accepted: Quote["nights"], next: Quote["nights"]) {
+function sameNights(accepted: QuotedRoom["nights"], next: QuotedRoom["nights"]) {
   return (
     accepted.length === next.length &&
     accepted.every((night, index) => {
@@ -306,19 +314,21 @@ function presentCheckout(
   context: Pick<CheckoutContext, "today" | "now">,
 ) {
   return {
-    roomTypeId: checkout.roomTypeId,
     checkIn: checkout.checkIn,
     checkOut: checkout.checkOut,
     nights: nightsBetween(checkout.checkIn, checkout.checkOut).length,
-    adults: checkout.adults,
-    children: checkout.children,
     ratePlan: checkout.ratePlan,
     language: acceptance?.language ?? checkout.language,
+    rooms: quote.rooms.map((room) => ({
+      roomTypeId: room.roomTypeId,
+      adults: room.adults,
+      children: room.children,
+      nights: room.nights.map(({ date, priceCents }) => ({ date, priceCents })),
+    })),
     quote: {
       id: quote.id,
       expired: quoteExpired(quote, context.now),
       expiresAt: quote.expiresAt,
-      nights: quote.nights.map(({ date, priceCents }) => ({ date, priceCents })),
       ...offerAmounts(quote, context.today),
     },
     acceptance: acceptance && { quoteId: acceptance.quoteId, acceptedAt: acceptance.acceptedAt },

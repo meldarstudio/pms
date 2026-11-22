@@ -15,7 +15,7 @@
 
   let {
     view,
-    room,
+    rooms,
     reservation,
     currency,
     access,
@@ -30,6 +30,7 @@
   } = $props();
   const { say, lang } = getReview();
   const stay = $derived(stayLabels(view, say, lang));
+  const room = $derived(rooms[0]!);
   const money = (cents: number) => formatMoney(cents, currency);
   let statusRegionMounted = $state(false);
   let checkmarkEntered = $state(false);
@@ -93,22 +94,43 @@
     <div class="confirmation-welcome-body">
       <div>
         <section class="confirmation-stay" aria-label={say("reservation.review.stay")}>
-          <img src={room.photo.src} alt={room.photo.alt} width="160" height="120" />
-          <div>
-            <p class="confirmation-label">{say("reservation.review.stay")}</p>
-            <h2 data-stay="room">{room.name}</h2>
-            <p>{room.beds}</p>
-            <p class="confirmation-stay-line">{stay.compact}</p>
-            <p>{stay.guests} · {stay.plan}</p>
-          </div>
-          <dl class="confirmation-dates">
-            <div>
-              <dt>{say("reservation.review.checkIn")}</dt>
-              <dd>{stay.checkIn}</dd>
+          {#if stay.several}
+            <div class="confirmation-stay-rooms">
+              <p class="confirmation-label">{say("reservation.review.stay")}</p>
+              <ol>
+                {#each rooms as item, index (index)}
+                  <li>
+                    <img src={item.photo.src} alt="" width="80" height="80" />
+                    <div>
+                      <h2 data-stay="room">{item.name}</h2>
+                      <p>{say("landing.roomNumber", { n: index + 1 })} · {stay.rooms[index]}</p>
+                    </div>
+                  </li>
+                {/each}
+              </ol>
             </div>
+          {:else}
+            <img src={room.photo.src} alt={room.photo.alt} width="160" height="120" />
             <div>
-              <dt>{say("reservation.review.checkOut")}</dt>
-              <dd>{stay.checkOut}</dd>
+              <p class="confirmation-label">{say("reservation.review.stay")}</p>
+              <h2 data-stay="room">{room.name}</h2>
+              <p>{room.beds}</p>
+            </div>
+          {/if}
+          <dl class="confirmation-stay-details">
+            <div>
+              <dt>{say("reservation.review.dates")}</dt>
+              <dd>{stay.compact}</dd>
+            </div>
+            {#if !stay.several}
+              <div>
+                <dt>{say("reservation.review.guests")}</dt>
+                <dd>{stay.guests}</dd>
+              </div>
+            {/if}
+            <div>
+              <dt>{say("reservation.review.plan")}</dt>
+              <dd>{stay.plan}</dd>
             </div>
           </dl>
         </section>
@@ -208,6 +230,6 @@
         </section>
       </aside>
     </div>
-    <PrintConfirmation {view} {room} {reservation} {currency} />
+    <PrintConfirmation {view} {rooms} {reservation} {currency} />
   </div>
 </section>

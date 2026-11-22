@@ -129,7 +129,6 @@ export const ui = {
     "hero.parking": "Free parking",
     "hero.bathroom": "Private bathroom",
     "hero.reception": "24-hour front desk",
-    "pets.welcome": "Pets welcome",
     "hero.bookCta": "Check availability",
     "hero.roomsCta": "See rooms and rates",
     "hero.imageAlt": "Room at Hotel Manantial in Churín",
@@ -145,7 +144,18 @@ export const ui = {
     "landing.calendar.chooseYear": "Choose the year",
     "landing.closeCalendar": "Close calendar",
     "landing.closeGuests": "Close guests",
-    "landing.guests": "Guests",
+    "landing.guests": "Rooms & guests",
+    "landing.rooms": "Rooms",
+    "landing.decreaseRooms": "Remove the last room",
+    "landing.increaseRooms": "Add a room",
+    "landing.roomNumber": "Room {n}",
+    "landing.removeRoom": "Remove",
+    "landing.removeRoomLabel": "Remove room {n}",
+    "landing.roomsOne": "1 room",
+    "landing.roomsOther": "{count} rooms",
+    "landing.guestsOne": "1 guest",
+    "landing.guestsOther": "{count} guests",
+    "landing.roomsLimit": "For more than 5 rooms, message us on WhatsApp.",
     "landing.decreaseAdults": "Decrease adults",
     "landing.increaseAdults": "Increase adults",
     "landing.decreaseChildren": "Decrease children",
@@ -219,6 +229,8 @@ export const ui = {
     "rooms.policies.cancelTitle": "Cancellation",
     "rooms.policies.cancelFlexibleBody":
       "Flexible rate: you may cancel free of charge up to and including two calendar days before your arrival date, Peru time. If you cancel after this deadline or do not arrive, the first night's accommodation will be charged.",
+    "rooms.policies.cancelFlexibleBodyRooms":
+      "Flexible rate: you may cancel free of charge up to and including two calendar days before your arrival date, Peru time. If you cancel after this deadline or do not arrive, each room's first night is charged, added together.",
     "rooms.policies.cancelNonRefundableBody":
       "Non-refundable rate: full payment for the stay is required when booking. If you cancel or do not arrive, the full stay is charged and the amount paid is not returned, unless the hotel cannot provide the service or there is an overpayment.",
     "rooms.policies.petsTitle": "Pets",
@@ -358,6 +370,14 @@ export const ui = {
     "reservation.choose.invalid.title": "Check your search",
     "reservation.choose.retry": "Try again",
     "reservation.room.soldOut": "Sold out",
+    "reservation.room.tooManyGuests": "Too small for this room's guests",
+    "reservation.room.sequence": "Room {n} of {total}",
+    "reservation.room.choose": "Choose this room",
+    "reservation.room.chosen": "Chosen",
+    "reservation.room.next": "Next room",
+    "reservation.room.previous": "Back to room {n}",
+    "reservation.room.failed":
+      "The {room} can no longer be reserved for room {n}. Your other rooms are kept: choose another room for this one.",
     "reservation.room.offline":
       "This room can't be reserved online. Message us on {whatsapp} to book it.",
     "reservation.room.chooseDates": "Choose dates",
@@ -384,8 +404,12 @@ export const ui = {
     "reservation.offer.taxes": "Prices in {currency}, taxes included.",
     "reservation.cancel.available":
       "Free cancellation through {date}, inclusive (Peru time). After that, cancelling or not arriving costs the first night: {amount}.",
+    "reservation.cancel.availableRooms":
+      "Free cancellation through {date}, inclusive (Peru time). After that, cancelling or not arriving costs each room's first night added together: {amount}.",
     "reservation.cancel.ended":
       "Free cancellation has already ended for these dates. Cancelling or not arriving costs the first night: {amount}.",
+    "reservation.cancel.endedRooms":
+      "Free cancellation has already ended for these dates. Cancelling or not arriving costs each room's first night added together: {amount}.",
     "reservation.cancel.none":
       "No free cancellation. Cancelling or not arriving is charged the full stay, {amount}, with no other penalty.",
     "reservation.cancel.settlement":
@@ -393,7 +417,7 @@ export const ui = {
     "reservation.choose.noOffers.title": "No room can be reserved online for this search",
     "reservation.choose.reason.sold_out": "{rooms}: sold out for these dates. Try other dates.",
     "reservation.choose.reason.too_many_guests":
-      "{rooms}: not enough room for your group. Each online reservation is for one room: search with fewer guests and reserve each room separately.",
+      "{rooms}: not enough room for this room's guests. Add a room in Rooms & guests to split your group.",
     "reservation.choose.reason.offline":
       "{rooms}: not bookable online. Message us on WhatsApp to book.",
     "reservation.meta.reviewTitle": "Review your reservation | Hotel Manantial",
@@ -416,6 +440,8 @@ export const ui = {
       "This page does not confirm a reservation. Confirm your booking and arrange payment with the hotel on WhatsApp.",
     "reservation.review.whatsapp.message":
       "Hello! I'd like to book this stay.\nRoom: {room}\nCheck-in: {checkIn}\nCheck-out: {checkOut}\nGuests: {guests}\nRate: {plan}\nStay total: {total}\nCan you confirm availability and payment arrangements?",
+    "reservation.review.whatsapp.messageRooms":
+      "Hello! I'd like to book this stay.\nRooms:\n{rooms}\nCheck-in: {checkIn}\nCheck-out: {checkOut}\nRate: {plan}\nStay total: {total}\nCan you confirm availability and payment arrangements?",
     "reservation.review.loading": "Preparing your price…",
     "reservation.review.loaded": "Your price and terms are ready.",
     "reservation.review.stay": "Your stay",
@@ -441,6 +467,8 @@ export const ui = {
     "reservation.review.cancellationEnded": "Free cancellation has ended",
     "reservation.review.lateCancellationCharge":
       "Cancellation or no-show costs the first night: {amount}.",
+    "reservation.review.lateCancellationChargeRooms":
+      "Cancellation or no-show costs each room's first night added together: {amount}.",
     "reservation.review.nonRefundableCancellation":
       "Cancellation or no-show: the full stay amount of {amount} is charged. No additional penalty.",
     "reservation.review.notes": "Notes (optional)",
@@ -454,6 +482,8 @@ export const ui = {
     "reservation.review.closeTerms": "Close",
     "reservation.review.schedule.flexible":
       "Payment: the first night, {now}, is paid online; the remaining {remaining} is paid at the hotel.",
+    "reservation.review.schedule.flexibleRooms":
+      "Payment: each room's first night added together, {now}, is paid online; the remaining {remaining} is paid at the hotel.",
     "reservation.review.schedule.non_refundable":
       "Payment: the whole stay, {now}, is paid online; nothing is left to pay at the hotel.",
     "reservation.review.lifecycle":
@@ -770,7 +800,6 @@ export const ui = {
     "hero.parking": "Cochera gratuita",
     "hero.bathroom": "Baño privado",
     "hero.reception": "Recepción 24 horas",
-    "pets.welcome": "Mascotas bienvenidas",
     "hero.bookCta": "Consultar disponibilidad",
     "hero.roomsCta": "Ver habitaciones y precios",
     "hero.imageAlt": "Habitación del Hotel Manantial en Churín",
@@ -786,7 +815,18 @@ export const ui = {
     "landing.calendar.chooseYear": "Elegir el año",
     "landing.closeCalendar": "Cerrar calendario",
     "landing.closeGuests": "Cerrar huéspedes",
-    "landing.guests": "Huéspedes",
+    "landing.guests": "Habitaciones y huéspedes",
+    "landing.rooms": "Habitaciones",
+    "landing.decreaseRooms": "Quitar la última habitación",
+    "landing.increaseRooms": "Agregar una habitación",
+    "landing.roomNumber": "Habitación {n}",
+    "landing.removeRoom": "Quitar",
+    "landing.removeRoomLabel": "Quitar habitación {n}",
+    "landing.roomsOne": "1 habitación",
+    "landing.roomsOther": "{count} habitaciones",
+    "landing.guestsOne": "1 huésped",
+    "landing.guestsOther": "{count} huéspedes",
+    "landing.roomsLimit": "Para más de 5 habitaciones, escríbanos por WhatsApp.",
     "landing.decreaseAdults": "Reducir adultos",
     "landing.increaseAdults": "Aumentar adultos",
     "landing.decreaseChildren": "Reducir niños",
@@ -860,6 +900,8 @@ export const ui = {
     "rooms.policies.cancelTitle": "Cancelación",
     "rooms.policies.cancelFlexibleBody":
       "Tarifa Flexible: puede cancelar sin cargo hasta dos días calendario antes de su fecha de llegada, inclusive, según la hora de Perú. Si cancela después de este plazo o no se presenta, se cobrará el importe de la primera noche de alojamiento.",
+    "rooms.policies.cancelFlexibleBodyRooms":
+      "Tarifa Flexible: puede cancelar sin cargo hasta dos días calendario antes de su fecha de llegada, inclusive, según la hora de Perú. Si cancela después de este plazo o no se presenta, se cobra la primera noche de cada habitación, sumadas.",
     "rooms.policies.cancelNonRefundableBody":
       "Tarifa No reembolsable: el importe total de la estadía se abona al reservar. Si cancela o no se presenta, se cobra el total de la estadía y no se devuelve lo pagado, salvo que el hotel no pueda prestar el servicio o haya un pago en exceso.",
     "rooms.policies.petsTitle": "Mascotas",
@@ -1000,6 +1042,14 @@ export const ui = {
     "reservation.choose.invalid.title": "Revise su búsqueda",
     "reservation.choose.retry": "Intentar de nuevo",
     "reservation.room.soldOut": "Agotada",
+    "reservation.room.tooManyGuests": "No admite a estos huéspedes",
+    "reservation.room.sequence": "Habitación {n} de {total}",
+    "reservation.room.choose": "Elegir esta habitación",
+    "reservation.room.chosen": "Elegida",
+    "reservation.room.next": "Siguiente habitación",
+    "reservation.room.previous": "Volver a la habitación {n}",
+    "reservation.room.failed":
+      "La {room} ya no se puede reservar para la habitación {n}. Sus otras habitaciones se mantienen: elija otra para esta.",
     "reservation.room.offline":
       "Esta habitación no se puede reservar en línea. Escríbanos por {whatsapp} para reservarla.",
     "reservation.room.chooseDates": "Elegir fechas",
@@ -1026,8 +1076,12 @@ export const ui = {
     "reservation.offer.taxes": "Precios en {currency}, impuestos incluidos.",
     "reservation.cancel.available":
       "Cancelación gratuita hasta el {date} inclusive (hora de Perú). Después, si cancela o no llega, se cobra la primera noche: {amount}.",
+    "reservation.cancel.availableRooms":
+      "Cancelación gratuita hasta el {date} inclusive (hora de Perú). Después, si cancela o no llega, se cobra la primera noche de cada habitación, sumadas: {amount}.",
     "reservation.cancel.ended":
       "Para estas fechas ya no hay cancelación gratuita. Si cancela o no llega, se cobra la primera noche: {amount}.",
+    "reservation.cancel.endedRooms":
+      "Para estas fechas ya no hay cancelación gratuita. Si cancela o no llega, se cobra la primera noche de cada habitación, sumadas: {amount}.",
     "reservation.cancel.none":
       "Sin cancelación gratuita. Si cancela o no llega, se cobra toda la estadía, {amount}, sin otra penalidad.",
     "reservation.cancel.settlement":
@@ -1037,7 +1091,7 @@ export const ui = {
     "reservation.choose.reason.sold_out":
       "{rooms}: sin disponibilidad para estas fechas. Pruebe otras fechas.",
     "reservation.choose.reason.too_many_guests":
-      "{rooms}: sin capacidad para su grupo. Cada reserva en línea es para una habitación: busque con menos huéspedes y reserve cada habitación por separado.",
+      "{rooms}: sin capacidad para los huéspedes de esta habitación. Agregue una habitación en Habitaciones y huéspedes para dividir su grupo.",
     "reservation.choose.reason.offline":
       "{rooms}: sin reserva en línea. Escríbanos por WhatsApp para reservar.",
     "reservation.meta.reviewTitle": "Revise su reserva | Hotel Manantial",
@@ -1060,6 +1114,8 @@ export const ui = {
       "Esta página no confirma una reserva. Confirme su reserva y coordine la forma de pago con el hotel por WhatsApp.",
     "reservation.review.whatsapp.message":
       "¡Hola! Quisiera reservar esta estadía.\nHabitación: {room}\nLlegada: {checkIn}\nSalida: {checkOut}\nHuéspedes: {guests}\nTarifa: {plan}\nTotal de la estadía: {total}\n¿Me confirman disponibilidad y forma de pago?",
+    "reservation.review.whatsapp.messageRooms":
+      "¡Hola! Quisiera reservar esta estadía.\nHabitaciones:\n{rooms}\nLlegada: {checkIn}\nSalida: {checkOut}\nTarifa: {plan}\nTotal de la estadía: {total}\n¿Me confirman disponibilidad y forma de pago?",
     "reservation.review.loading": "Preparando su precio…",
     "reservation.review.loaded": "Su precio y sus condiciones están listos.",
     "reservation.review.stay": "Su estadía",
@@ -1085,6 +1141,8 @@ export const ui = {
     "reservation.review.cancellationEnded": "El plazo de cancelación gratuita terminó",
     "reservation.review.lateCancellationCharge":
       "Si cancela o no llega, se cobra la primera noche: {amount}.",
+    "reservation.review.lateCancellationChargeRooms":
+      "Si cancela o no llega, se cobra la primera noche de cada habitación, sumadas: {amount}.",
     "reservation.review.nonRefundableCancellation":
       "Si cancela o no llega, se cobra el total de la estadía: {amount}. Sin penalidad adicional.",
     "reservation.review.notes": "Notas (opcional)",
@@ -1098,6 +1156,8 @@ export const ui = {
     "reservation.review.closeTerms": "Cerrar",
     "reservation.review.schedule.flexible":
       "Pago: la primera noche, {now}, se paga en línea; el resto, {remaining}, se paga en el hotel.",
+    "reservation.review.schedule.flexibleRooms":
+      "Pago: la primera noche de cada habitación, sumadas, {now}, se paga en línea; el resto, {remaining}, se paga en el hotel.",
     "reservation.review.schedule.non_refundable":
       "Pago: toda la estadía, {now}, se paga en línea; no queda nada por pagar en el hotel.",
     "reservation.review.lifecycle":

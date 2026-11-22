@@ -25,7 +25,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const stay = { checkIn: "2026-10-20", checkOut: "2026-10-22", adults: "2", children: "0" };
+const stay = { checkIn: "2026-10-20", checkOut: "2026-10-22" };
 
 function search(query: Record<string, string> = {}, headers: Record<string, string> = {}) {
   const params = new URLSearchParams({ ...stay, ...query });
@@ -40,7 +40,12 @@ async function offers(query: Record<string, string> = {}) {
   const response = await search(query);
   expect(response.status).toBe(200);
   return response.json() as Promise<{
-    roomTypes: { id: string; availability: string; offers: Record<string, unknown>[] }[];
+    roomTypes: {
+      id: string;
+      remaining: number;
+      availability?: string;
+      offers: Record<string, unknown>[];
+    }[];
   }>;
 }
 
@@ -57,15 +62,13 @@ describe("public offer search", () => {
       checkIn: "2026-10-20",
       checkOut: "2026-10-22",
       nights: 2,
-      adults: 2,
-      children: 0,
       currency: "PEN",
       roomTypes: [
         {
           id: "type-king",
           maxAdults: 2,
           maxChildren: 2,
-          availability: "available",
+          remaining: 1,
           offers: [
             {
               ratePlan: "flexible",
@@ -105,13 +108,13 @@ describe("public offer search", () => {
   });
 
   it.each([
-    ["confirmed", "sold_out", 0],
-    ["checked_in", "sold_out", 0],
-    ["cancelled", "available", 2],
-    ["unfulfilled", "available", 2],
+    ["confirmed", 0],
+    ["checked_in", 0],
+    ["cancelled", 1],
+    ["unfulfilled", 1],
   ])(
-    "treats the last room held by a %s stay on one night as %s",
-    async (status, availability, offerCount) => {
+    "counts the last room held by a %s stay on one night as %i remaining, still priced",
+    async (status, remaining) => {
       seedReservation(db.sqlite, {
         id: "res",
         code: "ABC123",
@@ -125,8 +128,8 @@ describe("public offer search", () => {
 
       const [king] = (await offers()).roomTypes;
 
-      expect(king!.availability).toBe(availability);
-      expect(king!.offers.length).toBe(offerCount);
+      expect(king!.remaining).toBe(remaining);
+      expect(king!.offers.length).toBe(2);
     },
   );
 
@@ -135,10 +138,10 @@ describe("public offer search", () => {
       "INSERT INTO room_closures (id, room_id, starts, ends, created_at) VALUES ('closure', 'room-101', '2026-10-21', '2026-10-23', '2026-10-01')",
     );
 
-    expect((await offers()).roomTypes[0]!.availability).toBe("sold_out");
+    expect((await offers()).roomTypes[0]!.remaining).toBe(0);
     expect(
-      (await offers({ checkIn: "2026-10-23", checkOut: "2026-10-24" })).roomTypes[0]!.availability,
-    ).toBe("available");
+      (await offers({ checkIn: "2026-10-23", checkOut: "2026-10-24" })).roomTypes[0]!.remaining,
+    ).toBe(1);
   });
 
   it("offers both rate plans for an arrival today until 10:59 p.m. Lima", async () => {
@@ -211,7 +214,7 @@ describe("public offer search", () => {
     });
   });
 
-  it("reveals no rooms, guests, counts or staff data, and sets no cookie", async () => {
+  it("reveals no rooms, guests or staff data, only free counts, and sets no cookie", async () => {
     seedRooms(db.sqlite, "type-king", { "room-102": "102" });
     seedReservation(db.sqlite, {
       id: "res",
@@ -239,13 +242,10 @@ describe("public offer search", () => {
 
     expect(response.status).toBe(200);
     expect([...keys].sort()).toEqual([
-      "adults",
-      "availability",
       "cancellation",
       "chargeCents",
       "checkIn",
       "checkOut",
-      "children",
       "currency",
       "freeCancellation",
       "freeUntil",
@@ -255,6 +255,7 @@ describe("public offer search", () => {
       "nights",
       "offers",
       "ratePlan",
+      "remaining",
       "remainingScheduledCents",
       "requiredInitialPaymentCents",
       "roomTypes",
@@ -266,7 +267,6 @@ describe("public offer search", () => {
       "2026-10-20",
       "2026-10-22",
       "PEN",
-      "available",
       "available",
       "flexible",
       "non_refundable",

@@ -90,11 +90,9 @@ async function acceptedCheckout(
 ) {
   const created = await guest("/public/checkouts", {
     body: {
-      roomTypeId: "type-king",
       checkIn: "2026-10-20",
       checkOut: "2026-10-22",
-      adults: 2,
-      children: 0,
+      rooms: [{ roomTypeId: "type-king", adults: 2, children: 0 }],
       ratePlan: "flexible",
       language,
       ...selection,

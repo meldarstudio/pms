@@ -76,7 +76,7 @@ async function prepareConfirmation(
         kind: email.kind,
         recipient: email.recipient,
         language: email.language,
-        room: await roomTypeNames(db, state),
+        rooms: await reservedRooms(db, state),
         currency: env.CURRENCY,
         token: today <= access.expiresOn ? access.token : null,
         expiresOn: access.expiresOn,
@@ -86,7 +86,7 @@ async function prepareConfirmation(
   };
 }
 
-async function roomTypeNames(db: Db, state: State) {
+async function reservedRooms(db: Db, state: State) {
   const ids = [...new Set(state.lines.map((line) => line.roomTypeId))];
   const types = ids.length
     ? await db
@@ -95,10 +95,11 @@ async function roomTypeNames(db: Db, state: State) {
         .where(inArray(roomTypes.id, ids))
     : [];
   const names = new Map(types.map((type) => [type.id, type.name]));
-  return state.lines
-    .map((line) => names.get(line.roomTypeId) ?? "")
-    .filter(Boolean)
-    .join(", ");
+  return state.lines.map((line) => ({
+    name: names.get(line.roomTypeId) ?? "",
+    adults: line.adults,
+    children: line.children,
+  }));
 }
 
 export async function reservationConfirmationEmails(db: Db, reservationId: string) {

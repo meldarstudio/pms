@@ -28,7 +28,7 @@ const RoomTypeOffers = Schema.Struct({
   id: Schema.String,
   maxAdults: Schema.Number,
   maxChildren: Schema.Number,
-  availability: Schema.Literals(["available", "sold_out", "too_many_guests"]),
+  remaining: Schema.Number,
   offers: Schema.Array(PlanOffer),
 });
 export type RoomTypeOffers = typeof RoomTypeOffers.Type;
@@ -37,8 +37,6 @@ const OfferSearchResult = Schema.Struct({
   checkIn: Schema.String,
   checkOut: Schema.String,
   nights: Schema.Number,
-  adults: Schema.Number,
-  children: Schema.Number,
   currency: Schema.String,
   roomTypes: Schema.Array(RoomTypeOffers),
 });
@@ -52,14 +50,9 @@ export type SearchOutcome =
   | { kind: "throttled" }
   | { kind: "unavailable" };
 
-export const fetchOffers = (search: StaySearch) =>
+export const fetchOffers = (search: Pick<StaySearch, "checkIn" | "checkOut">) =>
   pmsGet("/public/offers", {
-    urlParams: {
-      checkIn: search.checkIn,
-      checkOut: search.checkOut,
-      adults: String(search.adults),
-      children: String(search.children),
-    },
+    urlParams: { checkIn: search.checkIn, checkOut: search.checkOut },
   }).pipe(
     Effect.flatMap(
       HttpClientResponse.matchStatus({

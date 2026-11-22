@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { identifier, tablesReferencingFirst } from "./schema-reset.mjs";
 
 const roomSeed = readFileSync(new URL("../seed.sql", import.meta.url), "utf8");
 
@@ -7,6 +8,8 @@ const productionRoomTypeIds = {
   "doble-premium": "a50f22a2-c02c-4cb1-ab98-e9da48f0228d",
   "suite-familiar": "e93f440e-5546-45b3-8969-68a871d4ae81",
 };
+const sampleDataRoots = ["guests", "room_types", "public_checkouts"];
+
 const roomTypeNames = new Map(
   Object.entries(productionRoomTypeIds).map(([name, id]) => [id, name]),
 );
@@ -624,7 +627,7 @@ function insert(table, row) {
   return `INSERT INTO ${table} (${Object.keys(row).join(", ")}) VALUES (${Object.values(row).map(literal).join(", ")});`;
 }
 
-export function buildResetSql(value) {
+export function buildResetSql(value, schemaObjects) {
   const anchor = referenceDate(value);
   function date(offset) {
     const result = new Date(`${anchor}T00:00:00.000Z`);
@@ -635,25 +638,9 @@ export function buildResetSql(value) {
 
   const createdAt = `${date(-60)}T12:00:00.000Z`;
   const statements = [
-    "DELETE FROM reservation_requests;",
-    "DELETE FROM coupon_movements;",
-    "DELETE FROM coupons;",
-    "DELETE FROM reservation_guests;",
-    "DELETE FROM reservation_room_nights;",
-    "DELETE FROM refunds;",
-    "DELETE FROM cancellation_waivers;",
-    "DELETE FROM reservation_cancellations;",
-    "DELETE FROM payment_attempts;",
-    "DELETE FROM payment_voids;",
-    "DELETE FROM payments;",
-    "DELETE FROM reservation_rooms;",
-    "DELETE FROM reservations;",
-    "DELETE FROM quotes;",
-    "DELETE FROM room_closures;",
-    "DELETE FROM room_type_rates;",
-    "DELETE FROM guests;",
-    "DELETE FROM rooms;",
-    "DELETE FROM room_types;",
+    ...tablesReferencingFirst(schemaObjects, sampleDataRoots).map(
+      (table) => `DELETE FROM ${identifier(table)};`,
+    ),
     roomSeed,
   ];
 

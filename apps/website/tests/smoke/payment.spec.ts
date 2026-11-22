@@ -44,7 +44,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 const kingReview = (plan: string, lang = "") =>
-  reviewPath(openStay(), { room: "king", plan }, lang);
+  reviewPath(openStay(), { types: "king", plan }, lang);
 
 const payerEmail = () => `payer-${crypto.randomUUID().slice(0, 8)}@example.com`;
 
@@ -159,6 +159,54 @@ test("the complete English Non-refundable journey sends its saved confirmation a
   } finally {
     await fresh.close();
   }
+});
+
+test("a two-room Flexible stay is chosen room by room and paid once as one reservation", async ({
+  page,
+  request,
+}) => {
+  const stay = new URLSearchParams({
+    checkIn: daysFromToday(260),
+    checkOut: daysFromToday(262),
+    adults: "2,1",
+    children: "0,1",
+  });
+  await page.goto(`/habitaciones/?${stay.toString()}`);
+  await expect(page.getByRole("heading", { name: "Habitación 1 de 2" })).toBeVisible();
+  await page
+    .getByRole("article", { name: "Suite Matrimonial" })
+    .getByRole("button", { name: "Elegir esta habitación" })
+    .click();
+  await expect(page.getByRole("heading", { name: "Habitación 2 de 2" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: /Flexible/ })).toHaveCount(0);
+  await selectRoomRate(page, "Doble Premium", "Flexible");
+  const summary = page.getByRole("complementary", { name: "Su estadía" });
+  await expect(summary).toContainText("Suite Matrimonial");
+  await expect(summary).toContainText("Doble Premium");
+  await expect(summary).toContainText("1 adulto, 1 niño");
+  await page
+    .getByRole("link", { name: "Continuar con Suite Matrimonial y Doble Premium, tarifa Flexible" })
+    .click();
+
+  const review = page.getByRole("complementary", { name: "Su estadía" });
+  await expect(review.locator('[data-stay="room"]')).toHaveText([
+    "Suite Matrimonial",
+    "Doble Premium",
+  ]);
+  await fillContact(page, payerEmail());
+  await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
+  const checkout = await serverCheckout(page, request);
+  await payButton(page).click();
+  await expectConfirmed(page);
+
+  const reference = await page.locator("[data-confirmation-reference]").innerText();
+  expect(await serverPayment(page, request)).toMatchObject({ state: "confirmed" });
+  expect(checkout.quote.requiredInitialPaymentCents).toBeLessThan(checkout.quote.totalCents);
+  await expect(page.locator("[data-confirmation] [data-stay='room']")).toHaveText([
+    "Suite Matrimonial",
+    "Doble Premium",
+  ]);
+  expect(reference).toMatch(/^[A-Z0-9]{6}$/);
 });
 
 function expireQuote(quoteId: string, checkIn?: string) {
@@ -352,7 +400,7 @@ test("a cheaper refreshed quote is shown for a new acceptance and is not charged
 }) => {
   const stay = { checkIn: daysFromToday(200), checkOut: daysFromToday(202) };
   await page.goto(
-    `/reservar/revisar/?${new URLSearchParams({ ...stay, adults: "2", children: "0", room: "king", plan: "flexible" }).toString()}`,
+    `/reservar/revisar/?${new URLSearchParams({ ...stay, adults: "2", children: "0", types: "king", plan: "flexible" }).toString()}`,
   );
   await page.getByLabel("Nombre completo").fill("Ana Torres");
   await page.getByLabel("Correo electrónico").fill(payerEmail());

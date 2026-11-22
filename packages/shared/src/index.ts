@@ -122,8 +122,6 @@ export const availabilityQuerySchema = z.object({
 export const publicOfferSearchSchema = z.object({
   checkIn: dateSchema,
   checkOut: dateSchema,
-  adults: z.coerce.number().int().min(1).max(100),
-  children: z.coerce.number().int().min(0).max(100),
 });
 
 export const paymentListQuerySchema = z.object({
@@ -364,9 +362,16 @@ export const workflowCreatePreviewSchema = workflowCreateSchema
       .max(60),
   })
   .strict();
-export const quoteCreateSchema = workflowRoom
+const roomRequestSchema = workflowRoom
   .pick({ roomTypeId: true, adults: true, children: true })
-  .extend({ checkIn: dateSchema, checkOut: dateSchema, ratePlan: ratePlanCodeSchema })
+  .strict();
+export const quoteCreateSchema = z
+  .object({
+    checkIn: dateSchema,
+    checkOut: dateSchema,
+    ratePlan: ratePlanCodeSchema,
+    rooms: z.array(roomRequestSchema).min(1).max(60),
+  })
   .strict();
 export const checkoutLanguageSchema = z.enum(["es", "en"], { error: "unknown language" });
 export const publicCheckoutCreateSchema = quoteCreateSchema
@@ -411,6 +416,7 @@ export type ConfirmationResendRequest = z.input<typeof confirmationResendSchema>
 export type CheckoutLanguage = z.infer<typeof checkoutLanguageSchema>;
 export type PublicCheckoutCreate = z.infer<typeof publicCheckoutCreateSchema>;
 export type PublicCheckoutCreateRequest = z.input<typeof publicCheckoutCreateSchema>;
+export type RoomRequest = z.infer<typeof roomRequestSchema>;
 export type CheckoutAcceptance = z.infer<typeof checkoutAcceptanceSchema>;
 export type CheckoutPayment = z.infer<typeof checkoutPaymentSchema>;
 export type PublicPaymentAdmissionRequest = z.input<typeof publicPaymentAdmissionSchema>;

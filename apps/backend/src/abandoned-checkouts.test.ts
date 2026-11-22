@@ -22,13 +22,11 @@ const started = new Date("2026-10-01T15:00:00Z");
 const daysLater = (days: number) => new Date(started.getTime() + days * DAY_MS);
 
 const stay: PublicCheckoutCreate = {
-  roomTypeId: "type",
   checkIn: "2026-12-20",
   checkOut: "2026-12-22",
-  adults: 2,
-  children: 0,
   ratePlan: "non_refundable",
   language: "es",
+  rooms: [{ roomTypeId: "type", adults: 2, children: 0 }],
 };
 const contact = { fullName: "Ana Torres", email: "ana@example.com", phone: "987 654 321" };
 

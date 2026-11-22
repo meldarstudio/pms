@@ -45,8 +45,6 @@ export type Phase =
   | { kind: "problem"; title: RoomsBookingKey; body: RoomsBookingKey; retry: boolean }
   | { kind: "found"; search: StaySearch; result: OfferSearchResult };
 
-export type RoomState = "available" | "sold_out" | "too_many_guests" | "offline";
-
 const button =
   "font-source-sans-3 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase disabled:cursor-not-allowed";
 export const primary = `${button} bg-accent-500 text-accent-950 hover:bg-accent-400`;

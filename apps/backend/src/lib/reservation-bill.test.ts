@@ -4,9 +4,10 @@ import { getDb } from "../db";
 import { reservations } from "../db/schema";
 import type { presentReservation } from "../present";
 import { atBaseRate, createTestDb, seedRooms, seedRoomType, type TestDb } from "../test-support/d1";
+import { offerAmounts } from "../public-offers";
+import { ratePlans } from "./rate-plans";
 import {
   balanceCentsSql,
-  quoteBill,
   reservationBill,
   stayBill,
   type BillableReservation,
@@ -220,22 +221,30 @@ describe("bills before money moves", () => {
     });
   });
 
-  it("bills a quote's nights under its accepted terms", () => {
+  it("bills and cancels a two-room quote as each room's first night added together, or the whole stay", () => {
+    const priced = (...entries: [string, number][]) =>
+      nights(...entries).map((night) => ({ ...night, adjustmentCents: 0, discountCents: 0 }));
     const quote = {
-      nights: nights(["2026-10-20", 9000], ["2026-10-21", 9000], ["2026-10-22", 9000]),
+      checkIn: "2026-10-20",
+      rooms: [
+        { nights: priced(["2026-10-20", 9000], ["2026-10-21", 9000], ["2026-10-22", 9000]) },
+        { nights: priced(["2026-10-20", 12000], ["2026-10-21", 15000], ["2026-10-22", 15000]) },
+      ],
     };
-    expect(
-      quoteBill({ ...quote, terms: { paymentSchedule: "first_night_deposit" } }),
-    ).toMatchObject({
-      totalCents: 27000,
-      requiredInitialPaymentCents: 9000,
-      remainingScheduledCents: 18000,
+    expect(offerAmounts({ ...quote, terms: ratePlans.flexible }, "2026-10-10")).toMatchObject({
+      totalCents: 69000,
+      requiredInitialPaymentCents: 21000,
+      remainingScheduledCents: 48000,
+      cancellation: { chargeCents: 21000 },
     });
-    expect(quoteBill({ ...quote, terms: { paymentSchedule: "full_upfront" } })).toMatchObject({
-      totalCents: 27000,
-      requiredInitialPaymentCents: 27000,
-      remainingScheduledCents: 0,
-    });
+    expect(offerAmounts({ ...quote, terms: ratePlans.non_refundable }, "2026-10-10")).toMatchObject(
+      {
+        totalCents: 69000,
+        requiredInitialPaymentCents: 69000,
+        remainingScheduledCents: 0,
+        cancellation: { chargeCents: 69000 },
+      },
+    );
   });
 });
 
