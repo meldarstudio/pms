@@ -510,6 +510,48 @@ describe("what a payment can charge", () => {
     expect(charges()[0]!.body).toMatchObject({ amount: 8000, currency_code: "PEN" });
   });
 
+  it.each(["room occupancy changes", "room requests change order"] as const)(
+    "requires a new acceptance when %s without changing the price",
+    async (change) => {
+      seedRoomType(db.sqlite, {
+        id: "type-queen",
+        name: "Queen",
+        maxAdults: 2,
+        baseRateCents: 10000,
+      });
+      seedRooms(db.sqlite, "type-queen", { "room-201": "201" });
+      db.env.PUBLISHED_ROOM_TYPE_IDS = "type-king,type-queen";
+      const queen = { ...kingWithChild, roomTypeId: "type-queen" };
+      const checkout = await acceptedCheckout({ rooms: [king, queen] });
+      const rooms =
+        change === "room occupancy changes" ? [king, { ...queen, children: 0 }] : [queen, king];
+      db.sqlite
+        .prepare(
+          `UPDATE public_checkouts SET rooms = ?
+          WHERE id = (SELECT checkout_id FROM quotes WHERE id = ?)`,
+        )
+        .run(JSON.stringify(rooms), checkout.quoteId);
+      vi.advanceTimersByTime(10 * 60_000);
+
+      const refreshed = await guest("/public/checkout/quotes", {
+        token: checkout.token,
+        method: "POST",
+      });
+      expect(refreshed.status).toBe(201);
+      const view = (await refreshed.json()) as { quote: { id: string } };
+      expect(view).toMatchObject({
+        rooms,
+        quote: { totalCents: 40000, requiredInitialPaymentCents: 20000 },
+        acceptance: { quoteId: checkout.quoteId },
+      });
+
+      const refused = await pay({ token: checkout.token, quoteId: view.quote.id });
+      expect(refused.status).toBe(409);
+      expect(await refused.json()).toEqual({ error: "quote has not been accepted" });
+      expect(charges()).toEqual([]);
+    },
+  );
+
   it.each([
     ["an unknown payment", "timeout"],
     ["a pending authentication", "tkn_test_3ds"],
