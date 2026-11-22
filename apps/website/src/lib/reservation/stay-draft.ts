@@ -16,20 +16,26 @@ export type RoomChoice = "choosable" | "sold_out" | "too_many_guests" | "offline
 const fits = (offers: RoomTypeOffers, request: Pick<RoomRequest, "adults" | "children">) =>
   request.adults <= offers.maxAdults && request.children <= offers.maxChildren;
 
+function choiceFor(
+  request: RoomRequest | undefined,
+  offers: RoomTypeOffers | undefined,
+  takenByDraft: number,
+): RoomChoice {
+  if (!offers || !offers.offers.length || !request) return "offline";
+  if (!fits(offers, request)) return "too_many_guests";
+  return offers.remaining > takenByDraft ? "choosable" : "sold_out";
+}
+
 export function roomChoice(
   search: StaySearch,
   index: number,
   room: RoomId,
   offersFor: OffersFor,
 ): RoomChoice {
-  const offers = offersFor(room);
-  const request = search.requests[index];
-  if (!offers || !offers.offers.length || !request) return "offline";
-  if (!fits(offers, request)) return "too_many_guests";
   const takenByOthers = search.requests.filter(
-    (other, position) => position !== index && other.room === room,
+    (other, position) => position !== index && !other.failed && other.room === room,
   ).length;
-  return offers.remaining - takenByOthers > 0 ? "choosable" : "sold_out";
+  return choiceFor(search.requests[index], offersFor(room), takenByOthers);
 }
 
 export function stayRates(search: StaySearch, offersFor: OffersFor): PlanOffer[] {
@@ -97,11 +103,16 @@ export function continueFromRoom(search: StaySearch, offersFor: OffersFor): Stay
 }
 
 export function settleRooms(search: StaySearch, offersFor: OffersFor): StaySearch {
+  const keptByType = new Map<RoomId, number>();
   const requests = search.requests.map((request) => {
-    const offers = request.room ? offersFor(request.room) : undefined;
-    return request.room && !(offers?.offers.length && fits(offers, request))
-      ? { ...request, room: null }
-      : request;
+    const { room, failed } = request;
+    if (!room) return request;
+    const kept = keptByType.get(room) ?? 0;
+    const choice = choiceFor(request, offersFor(room), kept);
+    if (choice !== "choosable" && !(failed && choice === "sold_out"))
+      return { ...request, room: null };
+    if (!failed) keptByType.set(room, kept + 1);
+    return request;
   });
   const plan = requests.some((request) => request.room) ? search.plan : null;
   const at = Math.min(search.at, firstOpenRequest(requests));
