@@ -226,7 +226,7 @@ export const openCardForm = Effect.fnUntraced(function* (options: {
               agente: false,
               cuotealo: false,
             },
-            paymentMethodsSort: options.yape ? ["tarjeta", "yape"] : ["tarjeta"],
+            paymentMethodsSort: options.yape ? ["yape", "tarjeta"] : ["tarjeta"],
           },
           appearance: {
             ...cardAppearance,
