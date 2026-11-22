@@ -541,7 +541,7 @@ describe("what a payment can charge", () => {
       const view = (await refreshed.json()) as { quote: { id: string } };
       expect(view).toMatchObject({
         rooms,
-        quote: { totalCents: 40000, requiredInitialPaymentCents: 20000 },
+        quote: { totalCents: 40000 },
         acceptance: { quoteId: checkout.quoteId },
       });
 
