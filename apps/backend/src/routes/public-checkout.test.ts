@@ -7,20 +7,22 @@ import { createTestDb, seedRooms, seedRoomType, type TestDb } from "../test-supp
 
 type CheckoutView = {
   token?: string;
-  roomTypeId: string;
   checkIn: string;
   checkOut: string;
   nights: number;
-  adults: number;
-  children: number;
   ratePlan: string;
   language: string;
   currency: string;
+  rooms: {
+    roomTypeId: string;
+    adults: number;
+    children: number;
+    nights: { date: string; priceCents: number }[];
+  }[];
   quote: {
     id: string;
     expired: boolean;
     expiresAt: string;
-    nights: { date: string; priceCents: number }[];
     totalCents: number;
     requiredInitialPaymentCents: number;
     remainingScheduledCents: number;
@@ -48,14 +50,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+const king = { roomTypeId: "type-king", adults: 2, children: 0 };
+const queen = { roomTypeId: "type-queen", adults: 2, children: 0 };
+
 const selection: PublicCheckoutCreateRequest = {
-  roomTypeId: "type-king",
   checkIn: "2026-10-20",
   checkOut: "2026-10-22",
-  adults: 2,
-  children: 0,
   ratePlan: "flexible",
   language: "es",
+  rooms: [king],
 };
 
 const contact = { fullName: " Ana Torres ", email: "ana@example.com", phone: "987 654 321" };
@@ -117,25 +120,27 @@ describe("entering Review", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("set-cookie")).toBeNull();
     const view = (await response.json()) as CheckoutView;
-    expect(view).toEqual({
+    expect(view).toMatchObject({
       token: expect.stringMatching(/^[\w-]{43}$/),
-      roomTypeId: "type-king",
       checkIn: "2026-10-20",
       checkOut: "2026-10-22",
       nights: 2,
-      adults: 2,
-      children: 0,
       ratePlan: "flexible",
       language: "es",
       currency: "PEN",
+      rooms: [
+        {
+          ...king,
+          nights: [
+            { date: "2026-10-20", priceCents: 10000 },
+            { date: "2026-10-21", priceCents: 12345 },
+          ],
+        },
+      ],
       quote: {
         id: expect.any(String),
         expired: false,
         expiresAt: "2026-10-10T15:10:00.000Z",
-        nights: [
-          { date: "2026-10-20", priceCents: 10000 },
-          { date: "2026-10-21", priceCents: 12345 },
-        ],
         totalCents: 22345,
         requiredInitialPaymentCents: 10000,
         remainingScheduledCents: 12345,
@@ -184,8 +189,86 @@ describe("entering Review", () => {
   });
 
   it.each([
-    ["an unpublished type", { roomTypeId: "type-queen" }, 404, "room type not found"],
-    ["an unknown type", { roomTypeId: "type-missing" }, 404, "room type not found"],
+    [
+      "Flexible due now and its cancellation charge as each room's first night added together",
+      { ratePlan: "flexible" },
+      {
+        totalCents: 38000,
+        requiredInitialPaymentCents: 19000,
+        remainingScheduledCents: 19000,
+        cancellation: {
+          freeCancellation: "available",
+          freeUntil: "2026-10-18",
+          chargeCents: 19000,
+        },
+      },
+    ],
+    [
+      "Non-refundable as the full stay of both rooms",
+      { ratePlan: "non_refundable" },
+      {
+        totalCents: 34200,
+        requiredInitialPaymentCents: 34200,
+        remainingScheduledCents: 0,
+        cancellation: { freeCancellation: "none", freeUntil: null, chargeCents: 34200 },
+      },
+    ],
+  ])("prices two rooms as one quote: %s", async (_name, overrides, amounts) => {
+    db.env.PUBLISHED_ROOM_TYPE_IDS = "type-king,type-queen";
+
+    const view = await started({ ...overrides, rooms: [king, { ...queen, children: 1 }] });
+
+    expect(view.rooms.map(({ roomTypeId, children }) => [roomTypeId, children])).toEqual([
+      ["type-king", 0],
+      ["type-queen", 1],
+    ]);
+    expect(view.quote).toMatchObject(amounts);
+  });
+
+  it.each([
+    ["an unpublished type", [king, queen], 404, "room type not found", "rooms.1"],
+    [
+      "an unknown type",
+      [{ ...king, roomTypeId: "type-missing" }],
+      404,
+      "room type not found",
+      "rooms.0",
+    ],
+    [
+      "too many adults",
+      [king, { ...king, adults: 3 }],
+      400,
+      "too many guests for this room type",
+      "rooms.1",
+    ],
+    [
+      "too many children",
+      [{ ...king, children: 3 }],
+      400,
+      "too many guests for this room type",
+      "rooms.0",
+    ],
+    [
+      "a second request for the type's last free room",
+      [king, king, king],
+      409,
+      "no availability",
+      "rooms.2",
+    ],
+  ])(
+    "refuses %s, naming that room, without creating a checkout",
+    async (_name, rooms, status, error, field) => {
+      const response = await enterReview({ rooms });
+
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual({ error });
+      expect(response.headers.get("x-error-field")).toBe(field);
+      expect(count("public_checkouts")).toBe(0);
+      expect(count("quotes")).toBe(0);
+    },
+  );
+
+  it.each([
     [
       "an arrival yesterday",
       { checkIn: "2026-10-09", checkOut: "2026-10-11" },
@@ -193,8 +276,6 @@ describe("entering Review", () => {
       "online check-in must not be before today",
     ],
     ["61 nights", { checkOut: "2026-12-20" }, 400, "stay cannot be longer than 60 nights"],
-    ["too many adults", { adults: 3 }, 400, "too many guests for this room type"],
-    ["too many children", { children: 3 }, 400, "too many guests for this room type"],
   ])("refuses %s without creating a checkout", async (_name, overrides, status, error) => {
     const response = await enterReview(overrides);
 
@@ -204,11 +285,27 @@ describe("entering Review", () => {
     expect(count("quotes")).toBe(0);
   });
 
+  it("still opens a one-room checkout from a page loaded before multi-room booking", async () => {
+    const { rooms: _rooms, ...stay } = selection;
+
+    const response = await guest("/public/checkouts", { body: { ...stay, ...king } });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      roomTypeId: "type-king",
+      adults: 2,
+      children: 0,
+      rooms: [king],
+      quote: { nights: [{ date: "2026-10-20" }, { date: "2026-10-21" }] },
+    });
+  });
+
   it.each([
     ["a price", { totalCents: 1 }],
     ["a discount", { discountCents: 5000 }],
     ["a status", { status: "confirmed" }],
-    ["a room", { roomId: "room-101" }],
+    ["a room", { rooms: [{ ...king, roomId: "room-101" }] }],
+    ["no room", { rooms: [] }],
     ["another language", { language: "fr" }],
   ])("rejects a guest-supplied %s", async (_name, extra) => {
     const response = await enterReview(extra);

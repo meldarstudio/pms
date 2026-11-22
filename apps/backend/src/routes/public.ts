@@ -3,8 +3,8 @@ import {
   checkoutAuthenticationFailureSchema,
   checkoutAuthenticationSchema,
   checkoutPaymentSchema,
+  legacyOneRoomOfferSearchSchema,
   publicCheckoutCreateSchema,
-  publicOfferSearchSchema,
 } from "@pms/shared";
 import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -21,6 +21,7 @@ import {
 import { requirePublicPaymentAdmission } from "../operation-controls";
 import { paymentContext } from "../payment-attempts";
 import { onlineArrivalCalendar } from "../property-calendar";
+import { legacyOneRoomOffers } from "../legacy-one-room";
 import { publishedRoomTypeIds, searchOffers } from "../public-offers";
 import {
   checkoutReservationAccess,
@@ -77,10 +78,11 @@ const requireCheckout = createMiddleware<Env>(async (c, next) => {
 publicRoutes.get(
   "/offers",
   limitBySourceIp("SEARCH_LIMITER", "too many searches"),
-  validate("query", publicOfferSearchSchema),
+  validate("query", legacyOneRoomOfferSearchSchema),
   async (c) => {
-    const result = await searchOffers(getDb(c.env.DB), c.req.valid("query"), guestContext(c));
-    return c.json({ ...result, currency: currency(c) });
+    const { adults, children, ...stay } = c.req.valid("query");
+    const result = await searchOffers(getDb(c.env.DB), stay, guestContext(c));
+    return c.json({ ...legacyOneRoomOffers(result, { adults, children }), currency: currency(c) });
   },
 );
 

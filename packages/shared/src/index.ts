@@ -122,8 +122,11 @@ export const availabilityQuerySchema = z.object({
 export const publicOfferSearchSchema = z.object({
   checkIn: dateSchema,
   checkOut: dateSchema,
-  adults: z.coerce.number().int().min(1).max(100),
-  children: z.coerce.number().int().min(0).max(100),
+});
+
+export const legacyOneRoomOfferSearchSchema = publicOfferSearchSchema.extend({
+  adults: z.coerce.number().int().min(1).max(100).optional(),
+  children: z.coerce.number().int().min(0).max(100).optional(),
 });
 
 export const paymentListQuerySchema = z.object({
@@ -364,14 +367,34 @@ export const workflowCreatePreviewSchema = workflowCreateSchema
       .max(60),
   })
   .strict();
-export const quoteCreateSchema = workflowRoom
+const roomRequestSchema = workflowRoom
   .pick({ roomTypeId: true, adults: true, children: true })
-  .extend({ checkIn: dateSchema, checkOut: dateSchema, ratePlan: ratePlanCodeSchema })
+  .strict();
+export const quoteCreateSchema = z
+  .object({
+    checkIn: dateSchema,
+    checkOut: dateSchema,
+    ratePlan: ratePlanCodeSchema,
+    rooms: z.array(roomRequestSchema).min(1).max(60),
+  })
   .strict();
 export const checkoutLanguageSchema = z.enum(["es", "en"], { error: "unknown language" });
-export const publicCheckoutCreateSchema = quoteCreateSchema
+const roomsCheckoutCreateSchema = quoteCreateSchema
   .extend({ language: checkoutLanguageSchema })
   .strict();
+const legacyOneRoomFields = ["roomTypeId", "adults", "children"] as const;
+function roomsFromLegacyOneRoomBody(body: unknown) {
+  if (typeof body !== "object" || body === null || "rooms" in body || !("roomTypeId" in body))
+    return body;
+  const legacy: Record<string, unknown> = { ...body };
+  const room = Object.fromEntries(legacyOneRoomFields.map((field) => [field, legacy[field]]));
+  for (const field of legacyOneRoomFields) delete legacy[field];
+  return { ...legacy, rooms: [room] };
+}
+export const publicCheckoutCreateSchema = z.preprocess(
+  roomsFromLegacyOneRoomBody,
+  roomsCheckoutCreateSchema,
+);
 const bookingContactSchema = z
   .object({
     fullName: requiredText(200, "full name is required"),
@@ -410,7 +433,8 @@ export type ConfirmationResend = z.infer<typeof confirmationResendSchema>;
 export type ConfirmationResendRequest = z.input<typeof confirmationResendSchema>;
 export type CheckoutLanguage = z.infer<typeof checkoutLanguageSchema>;
 export type PublicCheckoutCreate = z.infer<typeof publicCheckoutCreateSchema>;
-export type PublicCheckoutCreateRequest = z.input<typeof publicCheckoutCreateSchema>;
+export type PublicCheckoutCreateRequest = z.input<typeof roomsCheckoutCreateSchema>;
+export type RoomRequest = z.infer<typeof roomRequestSchema>;
 export type CheckoutAcceptance = z.infer<typeof checkoutAcceptanceSchema>;
 export type CheckoutPayment = z.infer<typeof checkoutPaymentSchema>;
 export type PublicPaymentAdmissionRequest = z.input<typeof publicPaymentAdmissionSchema>;

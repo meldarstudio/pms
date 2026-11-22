@@ -220,20 +220,23 @@ describe("bills before money moves", () => {
     });
   });
 
-  it("bills a quote's nights under its accepted terms", () => {
+  it("bills a two-room quote as each room's first night added together, or the whole stay", () => {
     const quote = {
-      nights: nights(["2026-10-20", 9000], ["2026-10-21", 9000], ["2026-10-22", 9000]),
+      rooms: [
+        { nights: nights(["2026-10-20", 9000], ["2026-10-21", 9000], ["2026-10-22", 9000]) },
+        { nights: nights(["2026-10-20", 12000], ["2026-10-21", 15000], ["2026-10-22", 15000]) },
+      ],
     };
     expect(
       quoteBill({ ...quote, terms: { paymentSchedule: "first_night_deposit" } }),
     ).toMatchObject({
-      totalCents: 27000,
-      requiredInitialPaymentCents: 9000,
-      remainingScheduledCents: 18000,
+      totalCents: 69000,
+      requiredInitialPaymentCents: 21000,
+      remainingScheduledCents: 48000,
     });
     expect(quoteBill({ ...quote, terms: { paymentSchedule: "full_upfront" } })).toMatchObject({
-      totalCents: 27000,
-      requiredInitialPaymentCents: 27000,
+      totalCents: 69000,
+      requiredInitialPaymentCents: 69000,
       remainingScheduledCents: 0,
     });
   });

@@ -20,7 +20,7 @@ import {
   type PaymentContext,
 } from "./payment-attempts";
 import { latestAcceptance, requireCurrentQuote, type PublicCheckout } from "./public-checkouts";
-import { quoteAvailable, requireQuotedOccupancy, type Quote } from "./quotes";
+import { requireSellableRooms, type Quote } from "./quotes";
 import { loadReservation } from "./reservation-read";
 
 export const TOO_MANY_PAYMENTS = "too many payment attempts";
@@ -100,8 +100,7 @@ export async function chargeCheckout(
   input: CheckoutPayment,
   context: PaymentContext & { today: string; now: Date },
 ) {
-  await requireQuotedOccupancy(db, quote);
-  if (!(await quoteAvailable(db, quote))) throw new HttpError(409, "no availability");
+  await requireSellableRooms(db, quote, null);
   try {
     const started = await startPaymentAttempt(
       db,

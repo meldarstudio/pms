@@ -112,7 +112,11 @@ async function loadBatch(db: Db, ids: string[]): Promise<State[]> {
         ),
       ),
     db.select().from(reservationGuests).where(inArray(reservationGuests.reservationId, ids)),
-    db.select().from(reservationRooms).where(inArray(reservationRooms.reservationId, ids)),
+    db
+      .select()
+      .from(reservationRooms)
+      .where(inArray(reservationRooms.reservationId, ids))
+      .orderBy(sql`${reservationRooms}.rowid`),
     db
       .select({
         reservationRoomId: reservationRoomNights.reservationRoomId,

@@ -14,6 +14,7 @@ Paths below are relative to `apps/backend` unless stated otherwise.
 - Keep scheduled steps independent on failure (`src/index.ts`). Reconcile payments before sending so a newly saved reservation's confirmation email can go out in the same run.
 - `purgeAbandonedCheckouts` (`src/abandoned-checkouts.ts`) re-checks the abandonment rule on every delete and never deletes quotes with `checkout_id IS NULL`.
 - Leave retired columns out of application logic: `operation_controls.email_submission_admitted`, `complaint_emails.delivery_uncertain`, `complaint_emails.retry_request_id`.
+- Public checkouts and quotes store their ordered room requests in `rooms`. The NOT NULL `room_type_id`, `adults`, `children` (and `quotes.nights`) columns only mirror the first room (`legacyFirst*` in the schema); never read them. `src/legacy-one-room.ts` keeps pages loaded before multi-room booking working.
 - `CULQI_API_URL`, `TURNSTILE_VERIFY_URL` and `RESEND_API_URL` take effect only for loopback addresses; the website's browser tests point them at local doubles.
 - Local dev sets Vite's `server.cors: false` in `vite.config.ts`, so credentialed CORS preflights reach the Worker and get its origin and credentials policy instead of Vite's.
 - `pnpm check` regenerates Worker types into git-ignored `.cloudflare/types`; refresh them alone with `pnpm --filter @pms/backend cf-typegen`.

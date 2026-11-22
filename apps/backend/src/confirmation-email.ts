@@ -9,7 +9,7 @@ export const confirmationEmailAttachments = [logo];
 export type ConfirmationEmailSection =
   | { action: true }
   | { title: string; lines: string[] }
-  | { stay: { checkIn: string; checkOut: string; room: string; plan: string } }
+  | { stay: { checkIn: string; checkOut: string; rooms: string[]; plan: string } }
   | { payment: { label: string; value: string; emphasis?: boolean }[]; note: string | null };
 
 export function confirmationEmailText(section: ConfirmationEmailSection, language: "es" | "en") {
@@ -19,7 +19,7 @@ export function confirmationEmailText(section: ConfirmationEmailSection, languag
     return [
       `${english ? "Check-in" : "Llegada"}: ${section.stay.checkIn}`,
       `${english ? "Check-out" : "Salida"}: ${section.stay.checkOut}`,
-      `${english ? "Room" : "Habitación"}: ${section.stay.room}`,
+      ...section.stay.rooms.map((room) => `${english ? "Room" : "Habitación"}: ${room}`),
       `Plan: ${section.stay.plan}`,
     ];
   }
@@ -87,8 +87,8 @@ ${[
   )
   .join("\n")}
 </tr></table>
-<p style="margin:23px 0 5px;font-family:Georgia,'Times New Roman',serif;font-size:21px;line-height:28px;color:#1c1917;">${escapeHtml(stay.room)}</p>
-<p style="margin:0;font-size:13px;line-height:21px;color:#78716c;">Plan: ${escapeHtml(stay.plan)}</p>
+${stay.rooms.map((room, index) => `<p style="margin:${index === 0 ? "23px" : "8px"} 0 0;font-family:Georgia,'Times New Roman',serif;font-size:21px;line-height:28px;color:#1c1917;">${escapeHtml(room)}</p>`).join("\n")}
+<p style="margin:5px 0 0;font-size:13px;line-height:21px;color:#78716c;">Plan: ${escapeHtml(stay.plan)}</p>
 </td></tr>`;
       }
       if ("payment" in section) {
@@ -161,17 +161,35 @@ const PLAN_NAME: Record<"es" | "en", Record<RatePlanCode, string>> = {
   en: { flexible: "Flexible", non_refundable: "Non-refundable" },
 };
 
+export type ReservedRoomLine = { name: string; adults: number; children: number };
+
 export type ConfirmationMessageInput = {
   state: State;
   kind: "automatic" | "resend";
   recipient: string;
   language: "es" | "en";
-  room: string;
+  rooms: ReservedRoomLine[];
   currency: string;
   token: string | null;
   expiresOn: string;
   today: string;
 };
+
+function reservedRoomLines(rooms: ReservedRoomLine[], language: "es" | "en") {
+  const counted = (
+    count: number,
+    one: Record<"es" | "en", string>,
+    other: Record<"es" | "en", string>,
+  ) => `${count} ${count === 1 ? one[language] : other[language]}`;
+  return rooms.map(({ name, adults, children }) => {
+    const guests = [
+      counted(adults, { es: "adulto", en: "adult" }, { es: "adultos", en: "adults" }),
+    ];
+    if (children)
+      guests.push(counted(children, { es: "niño", en: "child" }, { es: "niños", en: "children" }));
+    return `${name} · ${guests.join(", ")}`;
+  });
+}
 
 export function confirmationMessage(input: ConfirmationMessageInput) {
   return input.kind === "resend" ? summaryRequest(input) : confirmationRequest(input);
@@ -181,7 +199,7 @@ function confirmationRequest({
   state,
   language,
   currency,
-  room,
+  rooms,
   today,
   recipient,
   token,
@@ -195,7 +213,7 @@ function confirmationRequest({
     today,
     checkIn: state.reservation.checkIn,
     checkOut: state.reservation.checkOut,
-    room,
+    rooms: reservedRoomLines(rooms, language),
     plan: PLAN_NAME[language][terms.plan],
     freeUntil: freeCancellationUntil(terms.cancellationPolicy, state.reservation.checkIn),
     chargeCents: chargeableCents(
@@ -254,7 +272,7 @@ function summaryRequest({
   state,
   language,
   currency,
-  room,
+  rooms,
   today,
   recipient,
   token,
@@ -291,7 +309,7 @@ function summaryRequest({
       stay: {
         checkIn: state.reservation.checkIn,
         checkOut: state.reservation.checkOut,
-        room,
+        rooms: reservedRoomLines(rooms, language),
         plan: PLAN_NAME[language][terms.plan],
       },
     },
@@ -365,7 +383,7 @@ function messageFacts(input: {
   today: string;
   checkIn: string;
   checkOut: string;
-  room: string;
+  rooms: string[];
   plan: string;
   freeUntil: string | null;
   chargeCents: number;
@@ -399,7 +417,7 @@ function messageFacts(input: {
       stay: {
         checkIn: input.checkIn,
         checkOut: input.checkOut,
-        room: input.room,
+        rooms: input.rooms,
         plan: input.plan,
       },
     },

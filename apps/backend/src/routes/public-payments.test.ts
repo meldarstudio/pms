@@ -53,6 +53,8 @@ afterEach(() => {
 });
 
 const contact = { fullName: "Ana Torres", email: "ana@example.com", phone: "987 654 321" };
+const king = { roomTypeId: "type-king", adults: 2, children: 0 };
+const kingWithChild = { roomTypeId: "type-king", adults: 1, children: 1 };
 
 function guest(
   path: string,
@@ -92,13 +94,11 @@ async function acceptedCheckout(
 ): Promise<{ token: string; quoteId: string }> {
   const created = await guest("/public/checkouts", {
     body: {
-      roomTypeId: "type-king",
       checkIn: "2026-10-20",
       checkOut: "2026-10-22",
-      adults: 2,
-      children: 0,
       ratePlan: "flexible",
       language: "en",
+      rooms: [king],
       ...selection,
     },
   });
@@ -209,6 +209,45 @@ describe("paying the accepted quote", () => {
       capture: true,
     });
     expect(await status(checkout.token)).toEqual(payment);
+  });
+
+  it("confirms two rooms as one reservation from one acceptance and one charge, with one access link", async () => {
+    const checkout = await acceptedCheckout({ rooms: [king, kingWithChild] });
+
+    const payment = await paid(checkout);
+
+    expect(payment).toMatchObject({
+      state: "confirmed",
+      amountCents: 20000,
+      reservation: { paidCents: 20000, outstandingCents: 20000 },
+    });
+    expect(charges()).toHaveLength(1);
+    expect(rows("SELECT status FROM reservations")).toEqual([{ status: "confirmed" }]);
+    expect(
+      rows("SELECT room_type_id, room_id, adults, children FROM reservation_rooms ORDER BY rowid"),
+    ).toEqual([
+      { room_type_id: "type-king", room_id: null, adults: 2, children: 0 },
+      { room_type_id: "type-king", room_id: null, adults: 1, children: 1 },
+    ]);
+    expect(rows("SELECT count(*) AS n FROM reservation_access")).toEqual([{ n: 1 }]);
+    expect(rows("SELECT count(*) AS n FROM confirmation_emails")).toEqual([{ n: 1 }]);
+  });
+
+  it("holds both rooms of a confirmed two-room stay, so a later quote cannot take either", async () => {
+    await paid(await acceptedCheckout({ rooms: [king, king] }));
+
+    const later = await guest("/public/checkouts", {
+      body: {
+        checkIn: "2026-10-21",
+        checkOut: "2026-10-22",
+        ratePlan: "flexible",
+        language: "en",
+        rooms: [king],
+      },
+    });
+
+    expect(later.status).toBe(409);
+    expect(await later.json()).toEqual({ error: "no availability" });
   });
 
   it("charges the discounted Non-refundable total upfront and leaves nothing outstanding", async () => {
@@ -352,16 +391,39 @@ describe("payment outcomes", () => {
     expect(rows("SELECT count(*) AS n FROM refunds")).toEqual([{ n: 0 }]);
   });
 
-  it("refuses to charge once the room type sold out after acceptance", async () => {
-    const checkout = await acceptedCheckout();
+  it("saves a charge as Unfulfilled for the whole stay when one of its two rooms was taken meanwhile", async () => {
+    const checkout = await acceptedCheckout({ rooms: [king, kingWithChild] });
+    culqi.next("POST /charges", "lose");
+    await paid(checkout);
+    const saved = await db.request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      checkIn: "2026-10-21",
+      checkOut: "2026-10-22",
+      guest: { fullName: "Luis Rojas" },
+      rooms: [{ roomTypeId: "type-king", adults: 1, children: 0 }],
+    });
+    expect(saved.status).toBe(201);
+
+    expect(await status(checkout.token)).toMatchObject({
+      state: "unfulfilled",
+      reservation: { paidCents: 20000, outstandingCents: 0, refundDueCents: 20000 },
+    });
+    expect(rows("SELECT status FROM reservations WHERE source = 'online'")).toEqual([
+      { status: "unfulfilled" },
+    ]);
+    expect(rows("SELECT count(*) AS n FROM confirmation_emails")).toEqual([{ n: 0 }]);
+  });
+
+  it("refuses to charge once one of the rooms sold out after acceptance, naming that room", async () => {
+    const checkout = await acceptedCheckout({ rooms: [king, king] });
     db.sqlite.exec(`INSERT INTO room_closures (id, room_id, starts, ends, created_at) VALUES
-      ('c1', 'room-101', '2026-10-20', '2026-10-21', '2026-10-01'),
-      ('c2', 'room-102', '2026-10-20', '2026-10-21', '2026-10-01')`);
+      ('c1', 'room-101', '2026-10-20', '2026-10-21', '2026-10-01')`);
 
     const response = await pay(checkout);
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ error: "no availability" });
+    expect(response.headers.get("x-error-field")).toBe("rooms.1");
     expect(charges()).toEqual([]);
   });
 });

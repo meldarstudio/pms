@@ -24,25 +24,24 @@ afterEach(() => {
 });
 
 const stay: PublicCheckoutCreate = {
-  roomTypeId: "type",
   checkIn: "2026-10-20",
   checkOut: "2026-10-22",
-  adults: 2,
-  children: 0,
   ratePlan: "non_refundable",
   language: "es",
+  rooms: [{ roomTypeId: "type", adults: 2, children: 0 }],
 };
 const guest = { fullName: "Ana Torres", email: "ana@example.com" };
 
-async function quote() {
+async function checkout() {
   const { view } = await startCheckout(getDb(db.env.DB), stay, {
     today: "2026-10-10",
     firstNewArrival: "2026-10-10",
     now: new Date(),
     published: ["type"],
   });
-  return view.quote;
+  return view;
 }
+const quote = async () => (await checkout()).quote;
 const save = (quoteId: string) => saveQuote(getDb(db.env.DB), quoteId, guest);
 
 async function reservation(id: string) {
@@ -53,13 +52,13 @@ async function reservation(id: string) {
 
 describe("quotes", () => {
   it("prices two Non-refundable nights at S/100 as S/180 to pay, held for 10 minutes", async () => {
-    const quoted = await quote();
+    const { rooms, quote: quoted } = await checkout();
 
+    expect(rooms[0]!.nights).toEqual([
+      { date: "2026-10-20", priceCents: 9000 },
+      { date: "2026-10-21", priceCents: 9000 },
+    ]);
     expect(quoted).toMatchObject({
-      nights: [
-        { date: "2026-10-20", priceCents: 9000 },
-        { date: "2026-10-21", priceCents: 9000 },
-      ],
       totalCents: 18000,
       requiredInitialPaymentCents: 18000,
       remainingScheduledCents: 0,
@@ -103,8 +102,20 @@ describe("quotes", () => {
     await expect(quote()).rejects.toThrow("no availability");
   });
 
-  it("saves one reservation from a retried quote, even when the retry commits first", async () => {
-    const quoted = await quote();
+  it("saves one reservation with every room from a retried quote, even when the retry commits first", async () => {
+    seedRoomType(db.sqlite, { id: "queen", name: "Queen", maxAdults: 2, baseRateCents: 9000 });
+    seedRooms(db.sqlite, "queen", { "room-201": "201" });
+    const { view } = await startCheckout(
+      getDb(db.env.DB),
+      { ...stay, rooms: [...stay.rooms, { roomTypeId: "queen", adults: 1, children: 0 }] },
+      {
+        today: "2026-10-10",
+        firstNewArrival: "2026-10-10",
+        now: new Date(),
+        published: ["type", "queen"],
+      },
+    );
+    const quoted = view.quote;
     let retry: Promise<string> | undefined;
     db.beforeCommit(() => (retry = save(quoted.id)));
 
@@ -117,5 +128,8 @@ describe("quotes", () => {
         .prepare("SELECT count(*) AS count FROM reservations WHERE quote_id = ?")
         .get(quoted.id),
     ).toEqual({ count: 1 });
+    expect(
+      db.sqlite.prepare("SELECT room_type_id FROM reservation_rooms ORDER BY rowid").all(),
+    ).toEqual([{ room_type_id: "type" }, { room_type_id: "queen" }]);
   });
 });
