@@ -210,14 +210,32 @@
         >
           {say("reservation.review.stay")}
         </h2>
-        <ol class="mt-3 flex flex-col gap-3">
+        <ol class="mt-3 flex flex-col divide-y divide-stone-200">
           {#each chosen as item, index (index)}
-            <li>
-              <p class="text-xs text-stone-600">
-                {fill(searchCopy.roomNumber, { n: index + 1 })}
-              </p>
-              <p class="font-semibold text-pretty text-stone-900">{item.room.name}</p>
-              <p class="text-sm text-stone-600">{occupancySummary(searchCopy, item.request)}</p>
+            {@const thumb = item.room.photos[0]}
+            <li class="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
+              {#if thumb}
+                <img
+                  class="size-16 shrink-0 object-cover object-center"
+                  src={thumb.src}
+                  srcset={thumb.srcSet}
+                  sizes="4rem"
+                  width={thumb.width}
+                  height={thumb.height}
+                  alt=""
+                />
+              {/if}
+              <div class="min-w-0">
+                <p class="text-lg leading-snug font-semibold text-pretty text-stone-900">
+                  {item.room.name}
+                </p>
+                <p class="mt-0.5 text-sm text-stone-600">
+                  {fill(searchCopy.roomNumber, { n: index + 1 })} · {occupancySummary(
+                    searchCopy,
+                    item.request,
+                  )}
+                </p>
+              </div>
             </li>
           {/each}
         </ol>
@@ -246,7 +264,9 @@
         </div>
       </div>
       {/if}
-      <dl class="mt-4 flex flex-col gap-2 text-sm">
+      <dl
+        class={`mt-4 flex flex-col gap-2 text-sm ${several ? "border-t border-stone-200 pt-4" : ""}`}
+      >
         {@render summaryRow(say("reservation.review.dates"), `${dates} · ${nights}`)}
         {#if !several}
           {@render summaryRow(say("reservation.review.guests"), guests)}

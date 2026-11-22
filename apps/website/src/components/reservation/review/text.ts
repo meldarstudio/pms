@@ -50,6 +50,7 @@ export const reviewKeys = [
   "reservation.review.stay",
   "reservation.review.guests",
   "reservation.review.plan",
+  "reservation.review.dates",
   "reservation.review.contact",
   "reservation.review.contactLead",
   "reservation.review.privacyLink",
