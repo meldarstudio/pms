@@ -84,8 +84,8 @@ export function PaymentSettings() {
           <FieldContent>
             <FieldLabel htmlFor="configuration-public-payments">Pagos en línea</FieldLabel>
             <FieldDescription>
-              Acepta nuevos pagos con tarjeta en la web. Pausa los pagos durante un mantenimiento o
-              una falla de Culqi; los pagos ya iniciados pueden terminar.
+              Acepta nuevos pagos con tarjeta o Yape en la web. Pausa los pagos durante un
+              mantenimiento o una falla de Culqi; los pagos ya iniciados pueden terminar.
             </FieldDescription>
             <FieldDescription id="configuration-public-payments-state">
               {admitted ? "Activados" : "Pausados"}
@@ -110,8 +110,8 @@ export function PaymentSettings() {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Activar pagos en línea?</AlertDialogTitle>
             <AlertDialogDescription>
-              La web volverá a cobrar pagos nuevos con tarjeta. Actívalos solo cuando Culqi funcione
-              con normalidad.
+              La web volverá a cobrar pagos nuevos con tarjeta o Yape. Actívalos solo cuando Culqi
+              funcione con normalidad.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

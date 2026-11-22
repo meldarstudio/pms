@@ -172,6 +172,7 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
           currency: command.currency,
           email: command.email,
           lang: command.lang,
+          yape: command.yape,
         }).pipe(
           Effect.matchEffect({
             onFailure: () => send({ type: "cardFormFailed" }),

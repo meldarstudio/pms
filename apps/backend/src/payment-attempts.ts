@@ -1,4 +1,5 @@
 import type { CheckoutPayment, PaymentAuthentication } from "@pms/shared";
+import { onlinePaymentMethod } from "@pms/shared/online-payment";
 import { and, desc, eq, gt, gte, inArray, lt, ne, or, sql } from "drizzle-orm";
 import {
   culqiForEnv,
@@ -325,7 +326,7 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
   const { today } = propertyCalendar(context.timeZone);
   const payment = {
     amountCents: attempt.amountCents,
-    method: "card",
+    method: onlinePaymentMethod(attempt.sourceId),
     reference: attempt.culqiChargeId,
     paymentDate: propertyCalendar(context.timeZone, new Date(attempt.calledAt)).today,
     culqiChargeId: attempt.culqiChargeId,

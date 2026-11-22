@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import type {
+  PaymentMethod,
   ReservationCoupon,
   ReservationDetail,
   ReservationRefund,
@@ -124,13 +125,17 @@ function RefundFormLayout({
 export const culqiPendingLine =
   "Comprueba el resultado en Culqi antes de confirmarlo o marcarlo como fallido.";
 
+const onlineRefundTarget = (method: PaymentMethod) =>
+  method === "yape" ? "Al Yape" : "A la tarjeta";
+
 function refundSetup(detail: ReservationDetail) {
   const status = accountStatus(detail);
   const owedCents = status.state === "owed-back" ? status.cents : 0;
   const maxCents = Math.min(owedCents, refundCapacityCents(detail));
   const cards = cardRefundPayments(detail).map(({ payment, leftCents }) => ({
     value: payment.id,
-    label: `A la tarjeta · Pago en línea del ${format(parseISO(payment.paymentDate), "d MMM yyyy")}`,
+    label: `${onlineRefundTarget(payment.method)} · Pago en línea del ${format(parseISO(payment.paymentDate), "d MMM yyyy")}`,
+    method: payment.method,
     maxCents: Math.min(owedCents, leftCents),
   }));
   const choice = ({ kind, source }: ReturnSelection): ReturnChoice | null => {
@@ -293,6 +298,7 @@ export function RefundForm({
   const selected = setup.choice({ kind, source });
   const coupon = selected?.kind === "coupon";
   const manual = selected?.kind === "manual";
+  const onlineMethod = setup.cards.find((card) => card.value === source)?.method;
   const maxCents = selected?.maxCents ?? 0;
   const previewAmount = parseMajorToCents(amount.trim()) ?? 0;
   const previewEnabled = coupon && previewAmount > 0 && previewAmount <= maxCents;
@@ -340,7 +346,7 @@ export function RefundForm({
               : coupon
                 ? "Emitir cupón"
                 : !manual
-                  ? "Devolver a la tarjeta"
+                  ? `Devolver ${onlineRefundTarget(onlineMethod ?? "card").toLowerCase()}`
                   : handedOver
                     ? "Registrar reembolso"
                     : "Solicitar reembolso"}

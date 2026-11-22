@@ -198,6 +198,7 @@ export const openCardForm = Effect.fnUntraced(function* (options: {
   currency: string;
   email: string;
   lang: Lang;
+  yape: boolean;
 }): Effect.fn.Return<string | null, ProviderUnavailable> {
   yield* loadScript(CULQI_CHECKOUT_SCRIPT);
   const Checkout = yield* fromWindow(CULQI_CHECKOUT_SCRIPT, () => window.CulqiCheckout);
@@ -216,13 +217,13 @@ export const openCardForm = Effect.fnUntraced(function* (options: {
           modal: true,
           paymentMethods: {
             tarjeta: true,
-            yape: false,
+            yape: options.yape,
             billetera: false,
             bancaMovil: false,
             agente: false,
             cuotealo: false,
           },
-          paymentMethodsSort: ["tarjeta"],
+          paymentMethodsSort: options.yape ? ["tarjeta", "yape"] : ["tarjeta"],
         },
         appearance: {
           ...cardAppearance,

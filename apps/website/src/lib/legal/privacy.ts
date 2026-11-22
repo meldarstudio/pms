@@ -22,7 +22,7 @@ export const privacyInformation: LocalizedLegalDocument = {
         heading: "Qué datos tratamos y para qué",
         items: [
           "Reserva en línea: nombre completo, correo electrónico, teléfono y, si lo desea, una nota para el hotel. Los usamos para preparar su precio, registrar su aceptación de las condiciones, crear la reserva, enviarle la confirmación y comunicarnos con usted sobre su estadía.",
-          "Pago con tarjeta: los datos de la tarjeta los recibe directamente Culqi; el hotel no los ve ni los guarda. Para procesar el cargo y prevenir fraude, enviamos a Culqi su correo, nombre, teléfono y un identificador del dispositivo.",
+          "Pago en línea: los datos de la tarjeta, o el celular y el código de aprobación de Yape, los recibe directamente Culqi; el hotel no los ve ni los guarda. Para procesar el cargo y prevenir fraude, enviamos a Culqi su correo, nombre, teléfono y un identificador del dispositivo.",
           "Reservas por WhatsApp, teléfono o en recepción: los datos que usted nos comparte para reservar y coordinar el pago.",
           "Alojamiento: el nombre y el documento de identidad de los huéspedes, que registramos al llegar para cumplir las obligaciones de los establecimientos de hospedaje.",
           "Pagos, devoluciones y comprobantes: montos, fechas y medios de pago, para llevar la cuenta de su reserva y cumplir obligaciones tributarias.",
@@ -50,7 +50,7 @@ export const privacyInformation: LocalizedLegalDocument = {
         ],
         items: [
           "Cloudflare: alojamiento del sitio web y de nuestros sistemas, base de datos, archivos del Libro de Reclamaciones y verificación Turnstile.",
-          "Culqi: procesamiento de pagos con tarjeta y prevención de fraude.",
+          "Culqi: procesamiento de pagos con tarjeta y Yape, y prevención de fraude.",
           "Resend: envío de correos de confirmación y de constancias de reclamo.",
           "Google (Gmail): recepción de las respuestas que usted envía a nuestro correo.",
           "WhatsApp (Meta): solo si usted decide escribirnos por ese medio.",
@@ -110,7 +110,7 @@ export const privacyInformation: LocalizedLegalDocument = {
         heading: "What data we handle and why",
         items: [
           "Online booking: full name, email, phone and, if you wish, a note for the hotel. We use them to prepare your price, record your acceptance of the conditions, create the reservation, send your confirmation and contact you about your stay.",
-          "Card payment: Culqi receives your card details directly; the hotel neither sees nor stores them. To process the charge and prevent fraud, we send Culqi your email, name, phone and a device identifier.",
+          "Online payment: Culqi receives your card details, or your Yape phone number and approval code, directly; the hotel neither sees nor stores them. To process the charge and prevent fraud, we send Culqi your email, name, phone and a device identifier.",
           "Bookings by WhatsApp, phone or at the front desk: the details you share with us to book and arrange payment.",
           "Your stay: guests' names and identity documents, which we record on arrival to meet the obligations of lodging establishments.",
           "Payments, refunds and receipts: amounts, dates and payment methods, to keep your reservation's account and meet tax obligations.",
@@ -138,7 +138,7 @@ export const privacyInformation: LocalizedLegalDocument = {
         ],
         items: [
           "Cloudflare: hosting for the website and our systems, database, complaints book files and Turnstile verification.",
-          "Culqi: card payment processing and fraud prevention.",
+          "Culqi: card and Yape payment processing and fraud prevention.",
           "Resend: delivery of confirmation emails and complaint receipts.",
           "Google (Gmail): receiving the replies you send to our email address.",
           "WhatsApp (Meta): only if you choose to message us there.",

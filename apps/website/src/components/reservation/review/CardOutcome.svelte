@@ -23,7 +23,8 @@
   } = $props();
   const { say } = getReview();
   const pending = $derived(payment.state === "authentication_required");
-  const key = $derived(outcomePresentation(payment).copyKey);
+  const presentation = $derived(outcomePresentation(payment));
+  const key = $derived(presentation.copyKey);
   const Icon = $derived(pending ? Clock : WarningCircle);
   const actions = $derived(outcomeActions(state));
 </script>
@@ -67,7 +68,7 @@
             data-outcome-retry
             onclick={onRetry}
           >
-            {say("reservation.outcome.retry")}
+            {say(presentation.retryKey)}
           </button>
         {/if}
         {#if actions.bank}

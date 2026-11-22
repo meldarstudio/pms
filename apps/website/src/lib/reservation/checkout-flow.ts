@@ -37,6 +37,7 @@ import type { AuthenticationParameters } from "./providers";
 import { ratesOpen, type StaySearch } from "./search";
 import type { RoomId } from "@/lib/rooms";
 import type { CheckoutAccess } from "./summary";
+import { yapeAllowed } from "@pms/shared/online-payment";
 import type { PhoneDraft } from "@pms/shared/phone";
 import { emptyPhone } from "./phone";
 
@@ -228,7 +229,7 @@ export type Effect =
   | { type: "startSecurityCheck"; lang: Lang }
   | { type: "readSecurityToken" }
   | { type: "resetSecurityCheck" }
-  | ({ type: "openCardForm"; lang: Lang } & CardCharge)
+  | ({ type: "openCardForm"; lang: Lang; yape: boolean } & CardCharge)
   | ({ type: "deviceFingerprint" } & CardCharge)
   | ({ type: "openBank"; sourceId: string } & CardCharge)
   | { type: "storeCheckout"; key: string; checkout: StoredCheckout }
@@ -805,7 +806,13 @@ function afterSecurityToken(c: Ctx, token: string) {
     return release(c);
   }
   c.s.pay = { kind: "cardForm", turnstileToken: token };
-  c.fx.push({ type: "openCardForm", lang: c.s.lang, ...cardCharge(c, view) });
+  const charge = cardCharge(c, view);
+  c.fx.push({
+    type: "openCardForm",
+    lang: c.s.lang,
+    ...charge,
+    yape: yapeAllowed(charge.amountCents),
+  });
 }
 
 function afterCardForm(c: Ctx, sourceId: string | null) {

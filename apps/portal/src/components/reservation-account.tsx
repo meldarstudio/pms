@@ -364,7 +364,7 @@ function movements(detail: ReservationDetail, resolveRefunds: boolean): Movement
     const amount = money(payment.amountCents);
     const voided = payment.voidedAt !== null;
     const lock = voided ? null : paymentLock(detail, payment);
-    const method = payment.culqiChargeId ? "Tarjeta" : methodLabel(payment.method);
+    const method = methodLabel(payment.method);
     const kind = voided ? "Pago anulado" : payment.culqiChargeId ? "Pago en línea" : "Pago";
     rows.push({
       key: payment.id,

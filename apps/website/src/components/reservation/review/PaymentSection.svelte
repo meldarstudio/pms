@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Checkbox, CheckboxIndicator } from "@ui-sdk/svelte/checkbox";
   import { Check, CircleNotch } from "phosphor-svelte";
+  import { yapeAllowed } from "@pms/shared/online-payment";
   import type { State } from "@/lib/reservation/checkout-flow";
   import { payActionVisible, payBusy, sendingPayment } from "@/lib/reservation/checkout-selectors";
   import Cancellation from "./Cancellation.svelte";
@@ -135,5 +136,10 @@
       {say("reservation.pay.sending")}
     </p>
     <p class="mt-3 text-center text-sm text-stone-600">{say("reservation.pay.provider")}</p>
+    {#if view && !yapeAllowed(dueNow)}
+      <p class="mt-1 text-center text-sm text-stone-600" data-yape-unavailable>
+        {say("reservation.pay.yapeUnavailable")}
+      </p>
+    {/if}
   </div>
 </section>

@@ -70,7 +70,8 @@ const messages: Record<string, string> = {
   "payment security check is unavailable":
     "La verificación de seguridad del pago no está disponible. No se hizo ningún cargo; inténtalo más tarde.",
   "payment security check is required": "Completa la verificación de seguridad antes de pagar.",
-  "only card payments are accepted": "Solo se aceptan pagos con tarjeta.",
+  "only card and Yape payments are accepted": "Solo se aceptan pagos con tarjeta o Yape.",
+  "Yape payment exceeds its limit": "Yape no admite pagos de más de S/ 2,000.",
   "quote has not been accepted": "Acepta las condiciones de esta cotización antes de pagar.",
   "checkout already has a payment":
     "Esta reserva en curso ya tiene un pago. Revisa su estado antes de pedir otro precio.",
@@ -146,10 +147,10 @@ const messages: Record<string, string> = {
   "reservation with refunds cannot be restored":
     "La reserva tiene reembolsos y no se puede restaurar. Crea una nueva reserva.",
   "a Culqi refund for this payment is pending":
-    "Este pago ya tiene un reembolso a la tarjeta solicitado. Confírmalo o márcalo como fallido en Movimientos.",
-  "Culqi refund must be at least 100 cents": "El reembolso a la tarjeta debe ser de al menos S/ 1.",
+    "Este pago ya tiene un reembolso en línea solicitado. Confírmalo o márcalo como fallido en Movimientos.",
+  "Culqi refund must be at least 100 cents": "El reembolso en línea debe ser de al menos S/ 1.",
   "payment is not a Culqi payment":
-    "Este pago no se hizo en línea y no se puede devolver a la tarjeta.",
+    "Este pago no se hizo en línea y no se puede devolver por Culqi.",
   "Culqi payment cannot be changed": "Los pagos en línea no se pueden anular.",
   "Culqi is not configured": "Los pagos en línea no están configurados en el servidor.",
   "an unfulfilled reservation cannot change status":
