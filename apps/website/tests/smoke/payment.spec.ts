@@ -258,7 +258,10 @@ test("paying the accepted Flexible quote confirms it with the paid amount and th
   expect((await recordedCulqi(page)).configs).toMatchObject([
     {
       settings: { amount: 10000, currency: "PEN" },
-      options: { paymentMethods: { tarjeta: true, yape: true } },
+      options: {
+        paymentMethods: { tarjeta: true, yape: true },
+        paymentMethodsSort: ["yape", "tarjeta"],
+      },
     },
   ]);
 
