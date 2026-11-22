@@ -7,7 +7,7 @@ import { getLang, useTranslations } from "@/i18n/utils";
 
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
-const benefits = ["hero.parking", "hero.bathroom", "hero.reception", "pets.welcome"] as const;
+const benefits = ["hero.parking", "hero.bathroom", "hero.reception"] as const;
 const portraits = await Promise.all(
   (["avif", "webp"] as const).map(async (format) => ({
     format,
