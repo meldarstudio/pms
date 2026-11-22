@@ -15,7 +15,6 @@ import { HttpError, rethrowConflict } from "./http";
 import { loadRoomTypes, occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
 import { ratePlans, termColumns } from "./lib/rate-plans";
-import { legacyFirstQuotedRoomColumns } from "./legacy-one-room";
 import { reservationAccessValues } from "./reservation-access";
 import type { OnlineArrivalCalendar } from "./property-calendar";
 import { acceptPhone, requireNewOnlineArrival, requireStay } from "./rules";
@@ -49,7 +48,6 @@ export async function priceQuote(
     checkIn: input.checkIn,
     checkOut: input.checkOut,
     rooms,
-    ...legacyFirstQuotedRoomColumns(rooms),
     terms,
     createdAt: context.now.toISOString(),
     expiresAt: new Date(context.now.getTime() + QUOTE_MINUTES * 60_000).toISOString(),

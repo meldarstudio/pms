@@ -79,15 +79,14 @@ export function readSearch(params: URLSearchParams, roomIds: readonly string[]):
     plan && (ratePlanCodes as readonly string[]).includes(plan) ? (plan as RatePlanCode) : null;
   const adults = listParam(params, "adults");
   const children = listParam(params, "children");
-  const types = params.has("types") ? listParam(params, "types") : null;
-  const oneRoomRateLink = types === null && ratePlan ? featured : null;
+  const types = listParam(params, "types");
   const failed = count(params.get("failed") ?? undefined, 0, 1);
   const requests = Array.from(
     { length: Math.min(Math.max(adults.length, 1), MAX_ROOM_REQUESTS) },
     (_, index): RoomRequest => ({
       adults: count(adults[index], DEFAULT_ADULTS, 1),
       children: count(children[index], DEFAULT_CHILDREN, 0),
-      room: index === 0 && oneRoomRateLink ? oneRoomRateLink : knownRoom(types?.[index]),
+      room: knownRoom(types[index]),
       failed: failed === index + 1,
     }),
   );

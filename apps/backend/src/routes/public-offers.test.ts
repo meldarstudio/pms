@@ -144,22 +144,6 @@ describe("public offer search", () => {
     ).toBe(1);
   });
 
-  it.each([
-    ["a fitting party", "2", "0", "available"],
-    ["too many guests", "3", "0", "too_many_guests"],
-  ])(
-    "still tells a page loaded before multi-room booking about %s",
-    async (_name, adults, children, availability) => {
-      const response = await search({ adults, children });
-
-      expect(await response.json()).toMatchObject({
-        adults: Number(adults),
-        children: 0,
-        roomTypes: [{ id: "type-king", availability }],
-      });
-    },
-  );
-
   it("offers both rate plans for an arrival today until 10:59 p.m. Lima", async () => {
     vi.setSystemTime(new Date("2026-10-11T03:59:59Z"));
 

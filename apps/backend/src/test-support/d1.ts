@@ -105,7 +105,7 @@ export async function createTestDb({
     if (end === 0) throw new Error(`unregistered test migration: ${through}`);
     while (applied < end) {
       const { tag } = journal.entries[applied]!;
-      sqlite.exec(readFileSync(new URL(`${tag}.sql`, migrations), "utf8"));
+      sqlite.exec(`BEGIN;\n${readFileSync(new URL(`${tag}.sql`, migrations), "utf8")}\n;COMMIT;`);
       applied += 1;
     }
   };

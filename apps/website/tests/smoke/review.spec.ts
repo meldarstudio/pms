@@ -75,7 +75,7 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
 });
 
 test("a room lost before review returns to the rooms without picking another", async ({ page }) => {
-  await page.goto(reviewPath(doubleSoldOutStay(), { room: "double", plan: "flexible" }));
+  await page.goto(reviewPath(doubleSoldOutStay(), { types: "double", plan: "flexible" }));
 
   await expect(
     page.getByRole("heading", { name: "Esta habitación ya no está disponible para estas fechas" }),

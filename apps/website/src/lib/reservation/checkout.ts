@@ -129,28 +129,13 @@ export const acceptQuote = (
     token,
   );
 
-const oneRoomKey = ({ checkIn, checkOut, ratePlan }: CheckoutSelection, room: CheckoutRoom) => [
-  room.roomTypeId,
-  checkIn,
-  checkOut,
-  room.adults,
-  room.children,
-  ratePlan,
-];
-
-export const selectionKey = (selection: CheckoutSelection) => {
-  const [only, ...others] = selection.rooms;
-  return JSON.stringify(
-    only && !others.length
-      ? oneRoomKey(selection, only)
-      : [
-          selection.checkIn,
-          selection.checkOut,
-          selection.ratePlan,
-          selection.rooms.map((room) => [room.roomTypeId, room.adults, room.children]),
-        ],
-  );
-};
+export const selectionKey = (selection: CheckoutSelection) =>
+  JSON.stringify([
+    selection.checkIn,
+    selection.checkOut,
+    selection.ratePlan,
+    selection.rooms.map((room) => [room.roomTypeId, room.adults, room.children]),
+  ]);
 
 export const offerKey = (view: CheckoutView) =>
   JSON.stringify([

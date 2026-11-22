@@ -12,7 +12,6 @@ import { HttpError } from "./http";
 import { latestCheckoutAttempt } from "./payment-attempts";
 import { addDays, nightsBetween } from "./lib/dates";
 import { offerAmounts } from "./public-offers";
-import { legacyFirstRoomColumns, legacyOneRoomCheckoutFields } from "./legacy-one-room";
 import { priceQuote, quoteExpired, type Quote } from "./quotes";
 import type { OnlineArrivalCalendar } from "./property-calendar";
 import { acceptPhone, requireOnlineArrivalNotPast } from "./rules";
@@ -67,7 +66,6 @@ export async function startCheckout(db: Db, input: PublicCheckoutCreate, context
     ratePlan: input.ratePlan,
     language: input.language,
     rooms: input.rooms,
-    ...legacyFirstRoomColumns(input.rooms),
     createdAt: context.now.toISOString(),
   };
   const quote = await priceCheckout(db, checkout, context);
@@ -124,12 +122,9 @@ export async function requoteCheckout(db: Db, checkout: PublicCheckout, context:
 
 async function insertQuoteUnlessOpenPayment(db: Db, quote: Quote) {
   await db.run(sql`INSERT INTO ${quotes} (
-      id, room_type_id, check_in, check_out, adults, children, nights, rooms, terms, created_at,
-      expires_at, checkout_id
+      id, check_in, check_out, rooms, terms, created_at, expires_at, checkout_id
     )
-    SELECT ${quote.id}, ${quote.legacyFirstRoomTypeId}, ${quote.checkIn}, ${quote.checkOut},
-      ${quote.legacyFirstRoomAdults}, ${quote.legacyFirstRoomChildren},
-      ${JSON.stringify(quote.legacyFirstRoomNights)}, ${JSON.stringify(quote.rooms)},
+    SELECT ${quote.id}, ${quote.checkIn}, ${quote.checkOut}, ${JSON.stringify(quote.rooms)},
       ${JSON.stringify(quote.terms)}, ${quote.createdAt}, ${quote.expiresAt}, ${quote.checkoutId}
     WHERE NOT EXISTS (
       SELECT 1 FROM ${paymentAttempts}
@@ -318,7 +313,7 @@ function presentCheckout(
   acceptance: CheckoutAcceptanceRow | null,
   context: Pick<CheckoutContext, "today" | "now">,
 ) {
-  return legacyOneRoomCheckoutFields({
+  return {
     checkIn: checkout.checkIn,
     checkOut: checkout.checkOut,
     nights: nightsBetween(checkout.checkIn, checkout.checkOut).length,
@@ -337,5 +332,5 @@ function presentCheckout(
       ...offerAmounts(quote, context.today),
     },
     acceptance: acceptance && { quoteId: acceptance.quoteId, acceptedAt: acceptance.acceptedAt },
-  });
+  };
 }

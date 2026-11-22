@@ -124,11 +124,6 @@ export const publicOfferSearchSchema = z.object({
   checkOut: dateSchema,
 });
 
-export const legacyOneRoomOfferSearchSchema = publicOfferSearchSchema.extend({
-  adults: z.coerce.number().int().min(1).max(100).optional(),
-  children: z.coerce.number().int().min(0).max(100).optional(),
-});
-
 export const paymentListQuerySchema = z.object({
   from: dateSchema,
   to: dateSchema,
@@ -379,22 +374,9 @@ export const quoteCreateSchema = z
   })
   .strict();
 export const checkoutLanguageSchema = z.enum(["es", "en"], { error: "unknown language" });
-const roomsCheckoutCreateSchema = quoteCreateSchema
+export const publicCheckoutCreateSchema = quoteCreateSchema
   .extend({ language: checkoutLanguageSchema })
   .strict();
-const legacyOneRoomFields = ["roomTypeId", "adults", "children"] as const;
-function roomsFromLegacyOneRoomBody(body: unknown) {
-  if (typeof body !== "object" || body === null || "rooms" in body || !("roomTypeId" in body))
-    return body;
-  const legacy: Record<string, unknown> = { ...body };
-  const room = Object.fromEntries(legacyOneRoomFields.map((field) => [field, legacy[field]]));
-  for (const field of legacyOneRoomFields) delete legacy[field];
-  return { ...legacy, rooms: [room] };
-}
-export const publicCheckoutCreateSchema = z.preprocess(
-  roomsFromLegacyOneRoomBody,
-  roomsCheckoutCreateSchema,
-);
 const bookingContactSchema = z
   .object({
     fullName: requiredText(200, "full name is required"),
@@ -433,7 +415,7 @@ export type ConfirmationResend = z.infer<typeof confirmationResendSchema>;
 export type ConfirmationResendRequest = z.input<typeof confirmationResendSchema>;
 export type CheckoutLanguage = z.infer<typeof checkoutLanguageSchema>;
 export type PublicCheckoutCreate = z.infer<typeof publicCheckoutCreateSchema>;
-export type PublicCheckoutCreateRequest = z.input<typeof roomsCheckoutCreateSchema>;
+export type PublicCheckoutCreateRequest = z.input<typeof publicCheckoutCreateSchema>;
 export type RoomRequest = z.infer<typeof roomRequestSchema>;
 export type CheckoutAcceptance = z.infer<typeof checkoutAcceptanceSchema>;
 export type CheckoutPayment = z.infer<typeof checkoutPaymentSchema>;

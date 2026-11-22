@@ -81,13 +81,8 @@ export const publicCheckouts = sqliteTable(
   {
     id: text("id").primaryKey(),
     tokenHash: text("token_hash").notNull().unique(),
-    legacyFirstRoomTypeId: text("room_type_id")
-      .notNull()
-      .references(() => roomTypes.id),
     checkIn: text("check_in").notNull(),
     checkOut: text("check_out").notNull(),
-    legacyFirstRoomAdults: integer("adults").notNull(),
-    legacyFirstRoomChildren: integer("children").notNull(),
     rooms: text("rooms", { mode: "json" }).$type<RoomRequest[]>().notNull().default([]),
     ratePlan: text("rate_plan").$type<RatePlanCode>().notNull(),
     language: text("language").$type<CheckoutLanguage>().notNull(),
@@ -107,12 +102,8 @@ export const quotes = sqliteTable(
   "quotes",
   {
     id: text("id").primaryKey(),
-    legacyFirstRoomTypeId: text("room_type_id").notNull(),
     checkIn: text("check_in").notNull(),
     checkOut: text("check_out").notNull(),
-    legacyFirstRoomAdults: integer("adults").notNull(),
-    legacyFirstRoomChildren: integer("children").notNull(),
-    legacyFirstRoomNights: text("nights", { mode: "json" }).$type<PricedNight[]>().notNull(),
     rooms: text("rooms", { mode: "json" }).$type<QuotedRoom[]>().notNull().default([]),
     terms: text("terms", { mode: "json" }).$type<RatePlanTerms>().notNull(),
     createdAt: text("created_at").notNull(),

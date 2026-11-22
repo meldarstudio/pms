@@ -40,13 +40,8 @@ it("opens Rate only once every room request has a type", () => {
   expect(second.requests.map((request) => request.room)).toEqual(["king", "king"]);
 });
 
-it("reads an old one-room link as one room request, and its rate link as that room's Rate", () => {
-  const old = link("checkIn=2026-10-20&checkOut=2026-10-22&adults=2&children=1");
-  const rateLink = link(
-    "checkIn=2026-10-20&checkOut=2026-10-22&adults=2&children=0&room=king&plan=flexible",
-  );
+it("reads a link with one party as one room request", () => {
+  const oneParty = link("checkIn=2026-10-20&checkOut=2026-10-22&adults=2&children=1");
 
-  expect(old.requests).toEqual([{ adults: 2, children: 1, room: null, failed: false }]);
-  expect(rateLink.requests).toEqual([{ adults: 2, children: 0, room: "king", failed: false }]);
-  expect(ratesOpen(rateLink)).toBe(true);
+  expect(oneParty.requests).toEqual([{ adults: 2, children: 1, room: null, failed: false }]);
 });

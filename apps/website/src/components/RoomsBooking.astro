@@ -72,7 +72,7 @@ const details: StayDetails = {
       if (params.get("checkIn") && params.get("checkOut")) {
         booking.setAttribute("data-searched", "");
         const requests = (params.get("adults") ?? "").split(",").length;
-        const types = params.has("types") ? params.get("types").split(",") : [params.get("room")];
+        const types = (params.get("types") ?? "").split(",");
         const everyRoomChosen =
           types.length >= requests && types.slice(0, requests).every((id) => roomIds.includes(id));
         if (

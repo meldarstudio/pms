@@ -260,21 +260,6 @@ describe("entering Review", () => {
     expect(count("quotes")).toBe(0);
   });
 
-  it("still opens a one-room checkout from a page loaded before multi-room booking", async () => {
-    const { rooms: _rooms, ...stay } = selection;
-
-    const response = await guest("/public/checkouts", { body: { ...stay, ...king } });
-
-    expect(response.status).toBe(201);
-    expect(await response.json()).toMatchObject({
-      roomTypeId: "type-king",
-      adults: 2,
-      children: 0,
-      rooms: [king],
-      quote: { nights: [{ date: "2026-10-20" }, { date: "2026-10-21" }] },
-    });
-  });
-
   it.each([
     ["a price", { totalCents: 1 }],
     ["a discount", { discountCents: 5000 }],

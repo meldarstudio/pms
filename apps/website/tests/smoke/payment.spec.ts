@@ -44,7 +44,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 const kingReview = (plan: string, lang = "") =>
-  reviewPath(openStay(), { room: "king", plan }, lang);
+  reviewPath(openStay(), { types: "king", plan }, lang);
 
 const payerEmail = () => `payer-${crypto.randomUUID().slice(0, 8)}@example.com`;
 
@@ -400,7 +400,7 @@ test("a cheaper refreshed quote is shown for a new acceptance and is not charged
 }) => {
   const stay = { checkIn: daysFromToday(200), checkOut: daysFromToday(202) };
   await page.goto(
-    `/reservar/revisar/?${new URLSearchParams({ ...stay, adults: "2", children: "0", room: "king", plan: "flexible" }).toString()}`,
+    `/reservar/revisar/?${new URLSearchParams({ ...stay, adults: "2", children: "0", types: "king", plan: "flexible" }).toString()}`,
   );
   await page.getByLabel("Nombre completo").fill("Ana Torres");
   await page.getByLabel("Correo electrónico").fill(payerEmail());
