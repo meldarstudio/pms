@@ -2,7 +2,7 @@ import config from "../cloudflare.config.ts";
 import { applyMigrations, executeSql, localDatabase, queryRows } from "./d1.mjs";
 import { seedLocalOwner } from "./local-owner.mjs";
 import { buildResetSql, referenceDate } from "./seed-data.mjs";
-import { buildSchemaResetSql } from "./schema-reset.mjs";
+import { buildSchemaResetSql, schemaObjectsSql } from "./schema-reset.mjs";
 
 function propertyToday() {
   const timeZone = config.worker.env.PROPERTY_TIME_ZONE.value;
@@ -40,16 +40,12 @@ async function main() {
   const persistTo = options.get("--persist-to");
   const target = localDatabase(persistTo);
   if (options.has("--rebuild-schema")) {
-    const objects = queryRows(
-      target,
-      "SELECT type, name, tbl_name FROM sqlite_master WHERE type IN ('table', 'trigger')",
-    );
     console.log("Rebuilding PMS application schema and migration history.");
-    executeSql(target, buildSchemaResetSql(objects));
+    executeSql(target, buildSchemaResetSql(queryRows(target, schemaObjectsSql)));
   }
   console.log(`Replacing local PMS data with sample data around ${anchor}.`);
   applyMigrations(target);
-  executeSql(target, buildResetSql(anchor));
+  executeSql(target, buildResetSql(anchor, queryRows(target, schemaObjectsSql)));
   await seedLocalOwner(persistTo);
   console.log("Local database reset. Refresh the portal to load the sample data.");
 }
