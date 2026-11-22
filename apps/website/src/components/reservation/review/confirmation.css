@@ -104,6 +104,9 @@
 .confirmation-stay-line {
   margin-top: 0.75rem;
 }
+.confirmation-stay li + li {
+  margin-top: 0.5rem;
+}
 .confirmation-dates {
   width: 100%;
   display: grid;

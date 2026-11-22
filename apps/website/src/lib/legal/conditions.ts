@@ -32,7 +32,7 @@ export const reservationConditions: LocalizedLegalDocument = {
       {
         heading: "Tarifas",
         items: [
-          "Flexible: paga en línea la primera noche al reservar y el resto en el hotel. Puede cancelar sin cargo hasta dos días calendario antes de la llegada, inclusive, según la hora de Perú. Si cancela después de ese plazo o no se presenta, se cobra la primera noche.",
+          "Flexible: paga en línea la primera noche de cada habitación al reservar, sumadas, y el resto en el hotel. Puede cancelar sin cargo hasta dos días calendario antes de la llegada, inclusive, según la hora de Perú. Si cancela después de ese plazo o no se presenta, se cobra la primera noche de cada habitación, sumadas.",
           "No reembolsable: tiene un precio menor y paga toda la estadía al reservar. Si cancela o no se presenta, se cobra el total de la estadía, sin otra penalidad, y no se devuelve lo pagado, salvo que el hotel no pueda prestar el servicio o haya un pago en exceso.",
         ],
       },
@@ -112,7 +112,7 @@ export const reservationConditions: LocalizedLegalDocument = {
       {
         heading: "Rates",
         items: [
-          "Flexible: pay the first night online when you book and the rest at the hotel. You may cancel free of charge up to and including two calendar days before arrival, Peru time. If you cancel after that deadline or do not arrive, the first night is charged.",
+          "Flexible: pay each room's first night online when you book, added together, and the rest at the hotel. You may cancel free of charge up to and including two calendar days before arrival, Peru time. If you cancel after that deadline or do not arrive, each room's first night is charged, added together.",
           "Non-refundable: a lower price, with the full stay paid when you book. If you cancel or do not arrive, the full stay is charged, with no other penalty, and the amount paid is not returned, unless the hotel cannot provide the service or there is an overpayment.",
         ],
       },

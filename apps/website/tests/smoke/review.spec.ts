@@ -30,7 +30,7 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
 
   await expect(page).toHaveURL(/\/reservar\/revisar\/\?/);
   expect([...new URL(page.url()).searchParams.keys()].toSorted()).toEqual(
-    ["adults", "checkIn", "checkOut", "children", "plan", "room"].toSorted(),
+    ["adults", "checkIn", "checkOut", "children", "plan", "types"].toSorted(),
   );
   const stayDetails = page.getByRole("complementary", { name: "Su estadía" });
   await expect(stayDetails).toContainText("Suite Matrimonial");

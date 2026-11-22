@@ -20,12 +20,10 @@ const TURNSTILE = "turnstile-token";
 const ACCESS_TOKEN = "a".repeat(43);
 
 const selection: CheckoutSelection = {
-  roomTypeId: "type-king",
   checkIn: "2026-10-20",
   checkOut: "2026-10-22",
-  adults: 2,
-  children: 0,
   ratePlan: "flexible",
+  rooms: [{ roomTypeId: "type-king", adults: 2, children: 0 }],
 };
 
 const contact: ContactDraft = {
@@ -46,6 +44,13 @@ function quoteView(
   } = options;
   return {
     ...selection,
+    rooms: selection.rooms.map((room) => ({
+      ...room,
+      nights: [
+        { date: "2026-10-20", priceCents: total / 2 },
+        { date: "2026-10-21", priceCents: total / 2 },
+      ],
+    })),
     nights: 2,
     language: "es",
     currency: "PEN",
@@ -53,10 +58,6 @@ function quoteView(
       id: quoteId,
       expired: false,
       expiresAt,
-      nights: [
-        { date: "2026-10-20", priceCents: total / 2 },
-        { date: "2026-10-21", priceCents: total / 2 },
-      ],
       totalCents: total,
       requiredInitialPaymentCents: total / 2,
       remainingScheduledCents: total / 2,

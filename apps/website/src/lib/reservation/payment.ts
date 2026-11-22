@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 import { HttpClientResponse, HttpIncomingMessage } from "effect/http";
 import {
   errorMessage,
+  failingRoom,
   pmsFailures,
   type PmsClient,
   type PmsFailure,
@@ -29,8 +30,8 @@ export type PaymentOutcome =
   | { kind: "security_unavailable" }
   | { kind: "expired" }
   | { kind: "replaced" }
-  | { kind: "sold_out" }
-  | { kind: "invalid"; error: string }
+  | { kind: "sold_out"; room?: number }
+  | { kind: "invalid"; error: string; room?: number }
   | { kind: "denied" }
   | { kind: "unavailable" };
 
@@ -70,7 +71,7 @@ const decodePaymentBody = HttpIncomingMessage.schemaBodyJson(
   Schema.Struct({ payment: Schema.NullOr(GuestPayment) }),
 );
 
-const refusal = (status: number, error: string | null): PaymentOutcome => {
+const refusal = (status: number, error: string | null, room?: number): PaymentOutcome => {
   if (status === 429) return { kind: "throttled" };
   if (error === null) return { kind: "unavailable" };
   if (error === "online payments are paused") return { kind: "paused" };
@@ -78,8 +79,8 @@ const refusal = (status: number, error: string | null): PaymentOutcome => {
   if (SECURITY_UNAVAILABLE.has(error)) return { kind: "security_unavailable" };
   if (error === "quote has expired") return { kind: "expired" };
   if (REPLACED_QUOTE.has(error)) return { kind: "replaced" };
-  if (status === 409 && error === "no availability") return { kind: "sold_out" };
-  if (status === 400) return { kind: "invalid", error };
+  if (status === 409 && error === "no availability") return { kind: "sold_out", room };
+  if (status === 400 || room !== undefined) return { kind: "invalid", error, room };
   return { kind: "unavailable" };
 };
 
@@ -97,7 +98,9 @@ const paymentOutcome = (
             created: response.status === 201,
           })),
         orElse: (response) =>
-          Effect.map(errorMessage(response), (error) => refusal(response.status, error)),
+          Effect.map(errorMessage(response), (error) =>
+            refusal(response.status, error, failingRoom(response)),
+          ),
       }),
     ),
     Effect.catchTags(pmsFailures(() => Effect.succeed<PaymentOutcome>({ kind: "unavailable" }))),

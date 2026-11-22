@@ -3,6 +3,7 @@ import { type HttpClientResponse, HttpIncomingMessage } from "effect/http";
 import type { Lang } from "@/i18n/utils";
 import {
   errorMessage,
+  failingRoom,
   pmsFailures,
   isSuccess,
   type PmsClient,
@@ -14,23 +15,14 @@ import { Cancellation, RatePlan } from "./offers";
 import type { PhoneDraft } from "@pms/shared/phone";
 import type { RatePlanCode } from "./search";
 
+export type CheckoutRoom = { roomTypeId: string; adults: number; children: number };
+
 export type CheckoutSelection = {
-  roomTypeId: string;
   checkIn: string;
   checkOut: string;
-  adults: number;
-  children: number;
   ratePlan: RatePlanCode;
+  rooms: readonly CheckoutRoom[];
 };
-
-const selectionFields = [
-  "roomTypeId",
-  "checkIn",
-  "checkOut",
-  "adults",
-  "children",
-  "ratePlan",
-] as const satisfies readonly (keyof CheckoutSelection)[];
 
 export type BookingContact = { fullName: string; email: string; phone: string };
 
@@ -41,12 +33,19 @@ export type ContactDraft = {
   notes: string;
 };
 
+const PricedNight = Schema.Struct({ date: Schema.String, priceCents: Schema.Number });
+
 const CheckoutView = Schema.Struct({
-  roomTypeId: Schema.String,
   checkIn: Schema.String,
   checkOut: Schema.String,
-  adults: Schema.Number,
-  children: Schema.Number,
+  rooms: Schema.Array(
+    Schema.Struct({
+      roomTypeId: Schema.String,
+      adults: Schema.Number,
+      children: Schema.Number,
+      nights: Schema.Array(PricedNight),
+    }),
+  ),
   ratePlan: RatePlan,
   nights: Schema.Number,
   language: Schema.Literals(["es", "en"] satisfies Lang[]),
@@ -55,7 +54,6 @@ const CheckoutView = Schema.Struct({
     id: Schema.String,
     expired: Schema.Boolean,
     expiresAt: Schema.String,
-    nights: Schema.Array(Schema.Struct({ date: Schema.String, priceCents: Schema.Number })),
     totalCents: Schema.Number,
     requiredInitialPaymentCents: Schema.Number,
     remainingScheduledCents: Schema.Number,
@@ -73,24 +71,24 @@ export type CheckoutOutcome =
   | { kind: "ready"; view: CheckoutView; token: string }
   | { kind: "expired" }
   | { kind: "replaced" }
-  | { kind: "sold_out" }
-  | { kind: "invalid"; error: string }
+  | { kind: "sold_out"; room?: number }
+  | { kind: "invalid"; error: string; room?: number }
   | { kind: "denied" }
   | { kind: "throttled" }
   | { kind: "limited" }
   | { kind: "has_payment" }
   | { kind: "unavailable" };
 
-const refusal = (status: number, error: string | null): CheckoutOutcome => {
+const refusal = (status: number, error: string | null, room?: number): CheckoutOutcome => {
   if (status === 401) return { kind: "denied" };
   if (status === 429)
     return { kind: error === "too many acceptances for this checkout" ? "limited" : "throttled" };
   if (status === 409 && error === "quote was replaced by a newer quote")
     return { kind: "replaced" };
-  if (status === 409 && error === "no availability") return { kind: "sold_out" };
+  if (status === 409 && error === "no availability") return { kind: "sold_out", room };
   if (status === 409 && error === "checkout already has a payment") return { kind: "has_payment" };
   if (error === "quote has expired" || error === "quote not found") return { kind: "expired" };
-  if (status === 400 || status === 404) return { kind: "invalid", error: error ?? "" };
+  if (status === 400 || status === 404) return { kind: "invalid", error: error ?? "", room };
   return { kind: "unavailable" };
 };
 
@@ -106,7 +104,9 @@ const checkoutOutcome = (
             view,
             token: token ?? sentToken ?? "",
           }))
-        : Effect.map(errorMessage(response), (error) => refusal(response.status, error)),
+        : Effect.map(errorMessage(response), (error) =>
+            refusal(response.status, error, failingRoom(response)),
+          ),
     ),
     Effect.catchTags(pmsFailures(() => Effect.succeed<CheckoutOutcome>({ kind: "unavailable" }))),
   );
@@ -129,14 +129,34 @@ export const acceptQuote = (
     token,
   );
 
-export const selectionKey = (selection: CheckoutSelection) =>
-  JSON.stringify(selectionFields.map((field) => selection[field]));
+const oneRoomKey = ({ checkIn, checkOut, ratePlan }: CheckoutSelection, room: CheckoutRoom) => [
+  room.roomTypeId,
+  checkIn,
+  checkOut,
+  room.adults,
+  room.children,
+  ratePlan,
+];
+
+export const selectionKey = (selection: CheckoutSelection) => {
+  const [only, ...others] = selection.rooms;
+  return JSON.stringify(
+    only && !others.length
+      ? oneRoomKey(selection, only)
+      : [
+          selection.checkIn,
+          selection.checkOut,
+          selection.ratePlan,
+          selection.rooms.map((room) => [room.roomTypeId, room.adults, room.children]),
+        ],
+  );
+};
 
 export const offerKey = (view: CheckoutView) =>
   JSON.stringify([
     selectionKey(view),
     view.currency,
-    view.quote.nights,
+    view.rooms.map((room) => room.nights),
     view.quote.totalCents,
     view.quote.requiredInitialPaymentCents,
     view.quote.remainingScheduledCents,

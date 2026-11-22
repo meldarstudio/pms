@@ -44,6 +44,7 @@ export type CheckoutRunnerOptions = {
   dispatch: (event: Event) => void;
   securityContainer: () => HTMLElement | null;
   focus: (target: FocusTarget) => void;
+  returnToRoom: (room: number) => void;
 };
 
 export type CheckoutRunner = {
@@ -228,6 +229,9 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
         return Effect.flatMap(copyText(summaryLink(summaryHref, command.token)), (copied) =>
           send({ type: "accessCopied", copied }),
         );
+      case "returnToRoom":
+        options.returnToRoom(command.room);
+        return null;
       case "focus":
         options.focus(command.target);
         return null;

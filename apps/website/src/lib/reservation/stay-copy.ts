@@ -25,6 +25,17 @@ export type StaySearchCopy = {
   adultsOther: string;
   childrenOne: string;
   childrenOther: string;
+  rooms: string;
+  decreaseRooms: string;
+  increaseRooms: string;
+  roomNumber: string;
+  removeRoom: string;
+  removeRoomLabel: string;
+  roomsOne: string;
+  roomsOther: string;
+  guestsOne: string;
+  guestsOther: string;
+  roomsLimit: string;
   problems: Record<SearchProblem | ArrivalProblem, string>;
 };
 
@@ -61,6 +72,17 @@ export function staySearchCopy(
     adultsOther: t("reservation.adults.other"),
     childrenOne: t("reservation.children.one"),
     childrenOther: t("reservation.children.other"),
+    rooms: t("landing.rooms"),
+    decreaseRooms: t("landing.decreaseRooms"),
+    increaseRooms: t("landing.increaseRooms"),
+    roomNumber: t("landing.roomNumber"),
+    removeRoom: t("landing.removeRoom"),
+    removeRoomLabel: t("landing.removeRoomLabel"),
+    roomsOne: t("landing.roomsOne"),
+    roomsOther: t("landing.roomsOther"),
+    guestsOne: t("landing.guestsOne"),
+    guestsOther: t("landing.guestsOther"),
+    roomsLimit: t("landing.roomsLimit"),
     problems: {
       checkInRequired: t("reservation.problem.checkInRequired"),
       checkInPast: t("reservation.problem.checkInPast"),

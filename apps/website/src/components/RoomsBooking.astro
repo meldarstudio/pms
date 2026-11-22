@@ -71,7 +71,16 @@ const details: StayDetails = {
       const booking = document.currentScript.parentElement;
       if (params.get("checkIn") && params.get("checkOut")) {
         booking.setAttribute("data-searched", "");
-        if (roomIds.includes(params.get("room")) && ratePlanCodes.includes(params.get("plan"))) {
+        const requests = (params.get("adults") ?? "").split(",").length;
+        const types = params.has("types") ? params.get("types").split(",") : [params.get("room")];
+        const everyRoomChosen =
+          types.length >= requests && types.slice(0, requests).every((id) => roomIds.includes(id));
+        if (
+          everyRoomChosen &&
+          !params.has("step") &&
+          !params.has("failed") &&
+          ratePlanCodes.includes(params.get("plan"))
+        ) {
           booking.setAttribute("data-resume-rates", "");
         }
       }

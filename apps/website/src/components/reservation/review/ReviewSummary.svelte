@@ -5,15 +5,32 @@
   import { eyebrow, headline } from "./styles";
   import { stayLabels } from "./stay";
 
-  let { view, room }: { view: CheckoutView | null; room: ReviewRoom | null } = $props();
+  let { view, rooms }: { view: CheckoutView | null; rooms: ReviewRoom[] } = $props();
   const { say, lang } = getReview();
   const stay = $derived(view ? stayLabels(view, say, lang) : null);
+  const room = $derived(rooms[0] ?? null);
+  const several = $derived(rooms.length > 1);
 </script>
 
 <aside
   class="min-w-0 border border-stone-200 bg-white p-4 md:p-6 lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1"
   aria-labelledby="review-stay"
 >
+  {#if several}
+    <h2 id="review-stay" class={eyebrow}>{say("reservation.review.stay")}</h2>
+    <ol class="mt-2 flex flex-col gap-2" data-stay="rooms">
+      {#each rooms as item, index (index)}
+        <li>
+          <p class="font-semibold text-pretty text-stone-900" data-stay="room">{item.name}</p>
+          <p class="text-sm text-stone-600">
+            {say("landing.roomNumber", { n: index + 1 })}{stay?.rooms[index]
+              ? ` · ${stay.rooms[index]}`
+              : ""}
+          </p>
+        </li>
+      {/each}
+    </ol>
+  {:else}
   <div class="flex items-start gap-4">
     <img
       class="size-14 shrink-0 object-cover object-center md:size-20"
@@ -36,11 +53,12 @@
       </p>
     </div>
   </div>
+  {/if}
   <p class="mt-3 text-sm leading-relaxed text-stone-700 lg:hidden" data-stay="compact">
     {stay?.compact}
   </p>
   <p class="mt-1 text-sm text-stone-900 lg:hidden" data-stay="compact-guests-rate">
-    {stay?.guests} · {stay?.plan}
+    {several ? stay?.plan : `${stay?.guests ?? ""} · ${stay?.plan ?? ""}`}
   </p>
   <dl class="mt-3 border-t border-stone-200 pt-3 lg:mt-5 lg:pt-5">
     <div class={headline}>
@@ -70,10 +88,12 @@
     </dl>
     <p class="mt-2 text-stone-600" data-stay="nights">{stay?.nights}</p>
     <dl class="mt-4 grid grid-cols-2 gap-4">
-      <div>
-        <dt class="text-stone-600">{say("reservation.review.guests")}</dt>
-        <dd class="mt-1 font-medium text-stone-900" data-stay="guests">{stay?.guests}</dd>
-      </div>
+      {#if !several}
+        <div>
+          <dt class="text-stone-600">{say("reservation.review.guests")}</dt>
+          <dd class="mt-1 font-medium text-stone-900" data-stay="guests">{stay?.guests}</dd>
+        </div>
+      {/if}
       <div>
         <dt class="text-stone-600">{say("reservation.review.plan")}</dt>
         <dd class="mt-1 font-medium text-stone-900" data-stay="plan">{stay?.plan}</dd>

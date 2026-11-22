@@ -81,10 +81,7 @@
       previewHref = url.href;
     }
     const found = readSearch(url.searchParams, Object.keys(rooms));
-    const selection = checkoutSelection(
-      found,
-      found.room ? rooms[found.room]?.pmsRoomTypeId : null,
-    );
+    const selection = checkoutSelection(found, (room) => rooms[room]?.pmsRoomTypeId);
     const draftKey = selection ? selectionKey(selection) : "";
     search = found;
 
@@ -96,6 +93,13 @@
       securityContainer: () => root.querySelector<HTMLElement>("[data-security-check]"),
       focus: (target) =>
         root.querySelector<HTMLElement>(`[data-checkout-focus="${target}"]`)?.focus(),
+      returnToRoom: (index) => {
+        const requests = found.requests.map((request, position) => ({
+          ...request,
+          failed: position === index,
+        }));
+        location.replace(`${chooseHref}?${searchParams({ ...found, requests, at: index })}`);
+      },
     });
     runner = created;
     dispatch({
@@ -121,10 +125,15 @@
     };
   });
 
-  const room = $derived(search?.room ? (rooms[search.room] ?? null) : null);
+  const stayRooms = $derived(
+    (search?.requests ?? []).flatMap((request) =>
+      request.room && rooms[request.room] ? [rooms[request.room]!] : [],
+    ),
+  );
+  const room = $derived(stayRooms[0] ?? null);
   const ratesHref = $derived(search ? `${chooseHref}?${searchParams(search)}` : chooseHref);
   const choiceHref = $derived(
-    search ? `${chooseHref}?${searchParams(search, { withChoice: false })}` : chooseHref,
+    search ? `${chooseHref}?${searchParams({ ...search, at: 0 })}` : chooseHref,
   );
   const { view, payment } = $derived(checkout);
   const confirmedReservation = $derived(
@@ -133,15 +142,28 @@
   const whatsappLink = $derived.by(() => {
     if (!view || !room) return whatsappHref;
     const stay = stayLabels(view, say, lang);
+    const facts = {
+      checkIn: stay.checkIn,
+      checkOut: stay.checkOut,
+      plan: stay.plan,
+      total: stay.money(view.quote.totalCents),
+    };
     return getWhatsAppLink(
-      say("reservation.review.whatsapp.message", {
-        room: room.name,
-        checkIn: stay.checkIn,
-        checkOut: stay.checkOut,
-        guests: stay.guests,
-        plan: stay.plan,
-        total: stay.money(view.quote.totalCents),
-      }),
+      stay.several
+        ? say("reservation.review.whatsapp.messageRooms", {
+            ...facts,
+            rooms: stayRooms
+              .map(
+                (item, index) =>
+                  `${say("landing.roomNumber", { n: index + 1 })}: ${item.name} · ${stay.rooms[index] ?? ""}`,
+              )
+              .join("\n"),
+          })
+        : say("reservation.review.whatsapp.message", {
+            ...facts,
+            room: room.name,
+            guests: stay.guests,
+          }),
     );
   });
   const retryAccess = () => dispatch({ type: "accessRetryRequested" });
@@ -152,7 +174,7 @@
   {#if payment && confirmedReservation && view && room}
     <Confirmation
       {view}
-      {room}
+      rooms={stayRooms}
       reservation={confirmedReservation}
       currency={payment.currency}
       access={checkout.access}
@@ -191,7 +213,7 @@
       data-review
       hidden={!checkout.reviewShown}
     >
-      <ReviewSummary {view} {room} />
+      <ReviewSummary {view} rooms={stayRooms} />
       <div
         class="min-w-0 border border-stone-200 bg-white lg:col-start-1 lg:row-start-1"
         data-workflow

@@ -99,5 +99,12 @@ export const errorMessage = (response: HttpClientResponse.HttpClientResponse) =>
     Effect.orElseSucceed(() => null),
   );
 
+const ROOM_FIELD = /^rooms\.(\d+)$/;
+
+export const failingRoom = (response: HttpClientResponse.HttpClientResponse) => {
+  const index = ROOM_FIELD.exec(response.headers["x-error-field"] ?? "")?.[1];
+  return index === undefined ? undefined : Number(index);
+};
+
 export const isSuccess = (response: HttpClientResponse.HttpClientResponse) =>
   response.status >= 200 && response.status < 300;

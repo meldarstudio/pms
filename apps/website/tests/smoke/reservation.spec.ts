@@ -46,7 +46,7 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
 
   await expect(page).toHaveURL(
     new RegExp(
-      `/habitaciones/\\?checkIn=${stay.checkIn}&checkOut=${stay.checkOut}&adults=2&children=0&room=king$`,
+      `/habitaciones/\\?checkIn=${stay.checkIn}&checkOut=${stay.checkOut}&adults=1&children=0&room=king$`,
     ),
   );
   await expect(page.getByRole("article").first()).toHaveAccessibleName("Suite Matrimonial");
@@ -75,7 +75,7 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
   const summary = page.getByRole("complementary", { name: "Su estadía" });
   await expect(summary).toContainText("Suite Matrimonial");
   await expect(summary).toContainText("2 noches");
-  await expect(summary).toContainText("2 adultos");
+  await expect(summary).toContainText("1 adulto");
   await expect(flexible).toContainText(/S\/\s200\.00/);
   await expect(flexible).toContainText("Cancelación gratuita hasta el ");
   await expect(flexible.locator("time")).toHaveAttribute("datetime", daysFromToday(118));
@@ -95,7 +95,7 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
   await expect(summary).toContainText(/Total de la estadía\s*S\/\s200\.00/);
   await expect(summary).toContainText(/A pagar al reservar\s*S\/\s100\.00/);
   await expect(summary).toContainText(/Pago en el hotel\s*S\/\s100\.00/);
-  await expect(summary.getByRole("link")).toHaveAttribute("href", /plan=flexible$/);
+  await expect(summary.getByRole("link")).toHaveAttribute("href", /plan=flexible&room=king$/);
   await page.getByRole("radio", { name: /No reembolsable/ }).check();
   await expect(summary).toContainText(/A pagar al reservar\s*S\/\s180\.00/);
   await expect(summary).not.toContainText("Pago en el hotel");
@@ -105,7 +105,7 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
     .click();
   await expect(page).toHaveURL(
     new RegExp(
-      `/reservar/revisar/\\?checkIn=${stay.checkIn}&checkOut=${stay.checkOut}&adults=2&children=0&room=king&plan=non_refundable$`,
+      `/reservar/revisar/\\?checkIn=${stay.checkIn}&checkOut=${stay.checkOut}&adults=1&children=0&types=king&plan=non_refundable&room=king$`,
     ),
   );
 });
@@ -230,9 +230,11 @@ test("a preferred room that doesn't fit is never swapped for another", async ({ 
   await expect(
     page.getByText(/Su habitación preferida, Suite Matrimonial, no está disponible/),
   ).toBeVisible();
-  await expect(room(page, "Suite Matrimonial")).toHaveCount(0);
+  await expect(
+    room(page, "Suite Matrimonial").getByRole("button", { name: "No admite a estos huéspedes" }),
+  ).toBeDisabled();
   await expect(page.getByRole("region", { name: /Su habitación preferida/ })).toContainText(
-    "Suite Matrimonial: sin capacidad para su grupo.",
+    "Suite Matrimonial: sin capacidad para los huéspedes de esta habitación.",
   );
   await expect(
     room(page, "Doble Premium").getByRole("button", { name: /Ver tarifas/ }),

@@ -27,7 +27,7 @@ export type ReviewProps = {
 
 export type SavedConfirmation = {
   view: CheckoutView;
-  room: ReviewRoom;
+  rooms: ReviewRoom[];
   reservation: NonNullable<GuestPayment["reservation"]>;
   currency: string;
 };

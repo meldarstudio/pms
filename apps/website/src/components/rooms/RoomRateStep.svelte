@@ -7,10 +7,15 @@
     AccordionTrigger,
   } from "@ui-sdk/svelte/accordion";
   import type { Snippet } from "svelte";
-  import { guestSummary } from "@/components/stay-search/stay-search";
-  import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
+  import { occupancySummary } from "@/components/stay-search/stay-search";
+  import { fill, formatDate, formatList, formatMoney } from "@/lib/reservation/format";
   import type { PlanOffer } from "@/lib/reservation/offers";
-  import { searchParams, type RatePlanCode } from "@/lib/reservation/search";
+  import {
+    searchParams,
+    type RatePlanCode,
+    type RoomRequest,
+    type StaySearch,
+  } from "@/lib/reservation/search";
   import RoomIcon from "./RoomIcon.svelte";
   import { nightsOf, policyHeading, rateLayout, summaryLayout } from "./room-rate";
   import { primary, type Phase, type RoomView, type RoomsBookingProps } from "./room-view";
@@ -21,13 +26,15 @@
     text,
     searchCopy,
     reviewHref,
-    room,
+    chosen,
+    draft,
     phase,
     rates,
     selected,
     onPlan,
   }: Pick<RoomsBookingProps, "lang" | "text" | "searchCopy" | "reviewHref"> & {
-    room: RoomView;
+    chosen: { room: RoomView; request: RoomRequest }[];
+    draft: StaySearch;
     phase: Extract<Phase, { kind: "found" }>;
     rates: PlanOffer[];
     selected: PlanOffer;
@@ -38,16 +45,21 @@
     fill(text[key], values);
   const money = (cents: number) => formatMoney(cents, phase.result.currency);
   const nights = $derived(nightsOf(phase, text));
-  const guests = $derived(guestSummary(searchCopy, phase.search));
+  const several = $derived(chosen.length > 1);
+  const room = $derived(chosen[0]!.room);
+  const guests = $derived(occupancySummary(searchCopy, chosen[0]!.request));
   const dates = $derived(
     `${formatDate(phase.search.checkIn, lang, { includeWeekday: false })} – ${formatDate(phase.search.checkOut, lang, { includeWeekday: false })}`,
   );
   const continueHref = $derived(
-    `${reviewHref}?${searchParams({ ...phase.search, room: room.id, plan: selected.ratePlan }).toString()}`,
+    `${reviewHref}?${searchParams({ ...draft, plan: selected.ratePlan }).toString()}`,
   );
   const continueLabel = $derived(
     say("reservation.rate.continueLabel", {
-      room: room.name,
+      room: formatList(
+        chosen.map((item) => item.room.name),
+        lang,
+      ),
       plan: say(`reservation.plan.${selected.ratePlan}`),
     }),
   );
@@ -135,7 +147,9 @@
   <p>
     {text[
       selected.ratePlan === "flexible"
-        ? "rooms.policies.cancelFlexibleBody"
+        ? several
+          ? "rooms.policies.cancelFlexibleBodyRooms"
+          : "rooms.policies.cancelFlexibleBody"
         : "rooms.policies.cancelNonRefundableBody"
     ]}
   </p>
@@ -189,6 +203,25 @@
   </div>
   <aside class={summaryLayout} aria-labelledby="stay-summary">
     <div class="p-5 md:p-6">
+      {#if several}
+        <h2
+          id="stay-summary"
+          class="font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase"
+        >
+          {say("reservation.review.stay")}
+        </h2>
+        <ol class="mt-3 flex flex-col gap-3">
+          {#each chosen as item, index (index)}
+            <li>
+              <p class="text-xs text-stone-600">
+                {fill(searchCopy.roomNumber, { n: index + 1 })}
+              </p>
+              <p class="font-semibold text-pretty text-stone-900">{item.room.name}</p>
+              <p class="text-sm text-stone-600">{occupancySummary(searchCopy, item.request)}</p>
+            </li>
+          {/each}
+        </ol>
+      {:else}
       <div class="flex items-start gap-4">
         {#if photo}
           <img
@@ -212,9 +245,12 @@
           <p class="mt-1 text-sm text-stone-600">{room.beds} · {room.area}</p>
         </div>
       </div>
+      {/if}
       <dl class="mt-4 flex flex-col gap-2 text-sm">
         {@render summaryRow(say("reservation.review.dates"), `${dates} · ${nights}`)}
-        {@render summaryRow(say("reservation.review.guests"), guests)}
+        {#if !several}
+          {@render summaryRow(say("reservation.review.guests"), guests)}
+        {/if}
         {@render summaryRow(
           say("reservation.review.plan"),
           say(`reservation.plan.${selected.ratePlan}`),

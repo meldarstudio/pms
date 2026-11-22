@@ -15,7 +15,7 @@
 
   let {
     view,
-    room,
+    rooms,
     reservation,
     currency,
     access,
@@ -30,6 +30,7 @@
   } = $props();
   const { say, lang } = getReview();
   const stay = $derived(stayLabels(view, say, lang));
+  const room = $derived(rooms[0]!);
   const money = (cents: number) => formatMoney(cents, currency);
   let statusRegionMounted = $state(false);
   let checkmarkEntered = $state(false);
@@ -96,10 +97,23 @@
           <img src={room.photo.src} alt={room.photo.alt} width="160" height="120" />
           <div>
             <p class="confirmation-label">{say("reservation.review.stay")}</p>
-            <h2 data-stay="room">{room.name}</h2>
-            <p>{room.beds}</p>
-            <p class="confirmation-stay-line">{stay.compact}</p>
-            <p>{stay.guests} · {stay.plan}</p>
+            {#if stay.several}
+              <ol>
+                {#each rooms as item, index (index)}
+                  <li>
+                    <h2 data-stay="room">{item.name}</h2>
+                    <p>{item.beds} · {stay.rooms[index]}</p>
+                  </li>
+                {/each}
+              </ol>
+              <p class="confirmation-stay-line">{stay.compact}</p>
+              <p>{stay.plan}</p>
+            {:else}
+              <h2 data-stay="room">{room.name}</h2>
+              <p>{room.beds}</p>
+              <p class="confirmation-stay-line">{stay.compact}</p>
+              <p>{stay.guests} · {stay.plan}</p>
+            {/if}
           </div>
           <dl class="confirmation-dates">
             <div>
@@ -208,6 +222,6 @@
         </section>
       </aside>
     </div>
-    <PrintConfirmation {view} {room} {reservation} {currency} />
+    <PrintConfirmation {view} {rooms} {reservation} {currency} />
   </div>
 </section>

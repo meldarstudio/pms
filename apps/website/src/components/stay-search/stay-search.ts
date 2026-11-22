@@ -4,21 +4,22 @@ import { fill, formatDate } from "@/lib/reservation/format";
 import {
   addDays,
   arrivalProblem,
-  DEFAULT_ADULTS,
-  DEFAULT_CHILDREN,
   firstOnlineArrival,
   MAX_ADULTS_CHOICE,
   MAX_CHILDREN_CHOICE,
   MAX_NIGHTS,
+  MAX_ROOM_REQUESTS_CHOICE,
+  newRoomRequest,
   nightsBetween,
   onlineArrivalCalendar,
   searchParams,
   searchProblems,
+  type RoomRequest,
   type StaySearch,
 } from "@/lib/reservation/search";
 import { resumeSearch, storeSearch } from "@/lib/reservation/stay-search-storage";
 
-export type StaySearchProps = { lang: Lang; copy: StaySearchCopy } & (
+export type StaySearchProps = { lang: Lang; copy: StaySearchCopy; roomIds?: readonly string[] } & (
   | { action: string; onSearch?: never }
   | { action?: never; onSearch: (search: StaySearch) => void }
 );
@@ -46,10 +47,10 @@ export const guestFields = [
 export const initialSearch: StaySearch = {
   checkIn: "",
   checkOut: "",
-  adults: DEFAULT_ADULTS,
-  children: DEFAULT_CHILDREN,
-  room: null,
+  requests: [newRoomRequest()],
+  at: 0,
   plan: null,
+  featured: null,
 };
 
 export const calendarFocus = '[data-slot="calendar-day"][tabindex="0"]';
@@ -60,27 +61,33 @@ export const dateId = (field: DateField) =>
 export const placeholder = (copy: StaySearchCopy, field: DateField) =>
   field === "checkIn" ? copy.arrivalPlaceholder : copy.departurePlaceholder;
 
-export function shownSearch(search: StaySearch) {
-  return {
-    ...search,
-    adults: Math.min(search.adults, MAX_ADULTS_CHOICE),
-    children: Math.min(search.children, MAX_CHILDREN_CHOICE),
-  };
+export const shownSearch = (search: StaySearch) => ({
+  ...search,
+  requests: search.requests.map((request) => ({ ...request })),
+});
+
+export function restoreSearch(roomIds: readonly string[]) {
+  return shownSearch(resumeSearch(new URLSearchParams(window.location.search), roomIds));
 }
 
-export function restoreSearch() {
-  return shownSearch(resumeSearch(new URLSearchParams(window.location.search), []));
-}
+export const canAddRoom = (requests: readonly RoomRequest[]) =>
+  requests.length < MAX_ROOM_REQUESTS_CHOICE;
 
-export function guestSummary(
+const counted = (count: number, one: string, other: string) =>
+  count === 1 ? one : fill(other, { count });
+
+export function occupancySummary(
   copy: StaySearchCopy,
-  { adults, children }: Pick<StaySearch, "adults" | "children">,
+  { adults, children }: Pick<RoomRequest, "adults" | "children">,
 ) {
-  const adultsLabel = adults === 1 ? copy.adultsOne : fill(copy.adultsOther, { count: adults });
+  const adultsLabel = counted(adults, copy.adultsOne, copy.adultsOther);
   if (!children) return adultsLabel;
-  const childrenLabel =
-    children === 1 ? copy.childrenOne : fill(copy.childrenOther, { count: children });
-  return `${adultsLabel}, ${childrenLabel}`;
+  return `${adultsLabel}, ${counted(children, copy.childrenOne, copy.childrenOther)}`;
+}
+
+export function partySummary(copy: StaySearchCopy, requests: readonly RoomRequest[]) {
+  const guests = requests.reduce((sum, request) => sum + request.adults + request.children, 0);
+  return `${counted(requests.length, copy.roomsOne, copy.roomsOther)}, ${counted(guests, copy.guestsOne, copy.guestsOther)}`;
 }
 
 export function stayProblems(search: StaySearch): {
