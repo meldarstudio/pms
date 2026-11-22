@@ -69,6 +69,8 @@ export class ProviderUnavailable extends Data.TaggedError("ProviderUnavailable")
   provider: string;
 }> {}
 
+export class PaymentSourceRefused extends Data.TaggedError("PaymentSourceRefused") {}
+
 const loading = new Map<string, Deferred.Deferred<void, ProviderUnavailable>>();
 
 const loadScript = (src: string) =>
@@ -199,49 +201,51 @@ export const openCardForm = Effect.fnUntraced(function* (options: {
   email: string;
   lang: Lang;
   yape: boolean;
-}): Effect.fn.Return<string | null, ProviderUnavailable> {
+}): Effect.fn.Return<string | null, ProviderUnavailable | PaymentSourceRefused> {
   yield* loadScript(CULQI_CHECKOUT_SCRIPT);
   const Checkout = yield* fromWindow(CULQI_CHECKOUT_SCRIPT, () => window.CulqiCheckout);
-  return yield* Effect.callback<string | null, ProviderUnavailable>((resume) => {
-    try {
-      const checkout = new Checkout(options.publicKey, {
-        settings: {
-          title: options.title,
-          currency: options.currency,
-          amount: options.amountCents,
-        },
-        client: { email: options.email },
-        options: {
-          lang: options.lang,
-          installments: false,
-          modal: true,
-          paymentMethods: {
-            tarjeta: true,
-            yape: options.yape,
-            billetera: false,
-            bancaMovil: false,
-            agente: false,
-            cuotealo: false,
+  return yield* Effect.callback<string | null, ProviderUnavailable | PaymentSourceRefused>(
+    (resume) => {
+      try {
+        const checkout = new Checkout(options.publicKey, {
+          settings: {
+            title: options.title,
+            currency: options.currency,
+            amount: options.amountCents,
           },
-          paymentMethodsSort: options.yape ? ["tarjeta", "yape"] : ["tarjeta"],
-        },
-        appearance: {
-          ...cardAppearance,
-          buttonCardPayText: options.lang === "en" ? "Pay" : "Pagar",
-        },
-      });
-      checkout.culqi = () => {
-        const token = checkout.token?.id ?? null;
-        checkout.close();
-        resume(Effect.succeed(token));
-      };
-      checkout.closeCheckout = () => resume(Effect.succeed(null));
-      checkout.open();
-      return Effect.ignore(attempt(CULQI_CHECKOUT_SCRIPT, () => checkout.close()));
-    } catch {
-      resume(Effect.fail(new ProviderUnavailable({ provider: CULQI_CHECKOUT_SCRIPT })));
-    }
-  });
+          client: { email: options.email },
+          options: {
+            lang: options.lang,
+            installments: false,
+            modal: true,
+            paymentMethods: {
+              tarjeta: true,
+              yape: options.yape,
+              billetera: false,
+              bancaMovil: false,
+              agente: false,
+              cuotealo: false,
+            },
+            paymentMethodsSort: options.yape ? ["tarjeta", "yape"] : ["tarjeta"],
+          },
+          appearance: {
+            ...cardAppearance,
+            buttonCardPayText: options.lang === "en" ? "Pay" : "Pagar",
+          },
+        });
+        checkout.culqi = () => {
+          const token = checkout.token?.id;
+          checkout.close();
+          resume(token ? Effect.succeed(token) : Effect.fail(new PaymentSourceRefused()));
+        };
+        checkout.closeCheckout = () => resume(Effect.succeed(null));
+        checkout.open();
+        return Effect.ignore(attempt(CULQI_CHECKOUT_SCRIPT, () => checkout.close()));
+      } catch {
+        resume(Effect.fail(new ProviderUnavailable({ provider: CULQI_CHECKOUT_SCRIPT })));
+      }
+    },
+  );
 });
 
 type BankCharge = {

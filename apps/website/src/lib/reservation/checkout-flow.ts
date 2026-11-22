@@ -203,6 +203,7 @@ export type Event =
   | { type: "securityTokenRead"; token: string }
   | { type: "cardFormResolved"; sourceId: string | null }
   | { type: "cardFormFailed" }
+  | { type: "cardFormRefused" }
   | { type: "fingerprintRead"; fingerprint: string | null }
   | { type: "bankParameters"; parameters: AuthenticationParameters }
   | { type: "bankIncomplete" }
@@ -1056,6 +1057,10 @@ function handle(c: Ctx, event: Event) {
     case "cardFormFailed":
       if (c.s.pay.kind !== "cardForm") return;
       c.s.formError = "reservation.pay.error.card";
+      return release(c);
+    case "cardFormRefused":
+      if (c.s.pay.kind !== "cardForm") return;
+      c.s.formError = "reservation.pay.error.source";
       return release(c);
     case "fingerprintRead":
       return afterFingerprint(c, event.fingerprint);

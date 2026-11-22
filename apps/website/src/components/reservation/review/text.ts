@@ -97,6 +97,7 @@ export const reviewKeys = [
   "reservation.pay.changed",
   "reservation.pay.error.limited",
   "reservation.pay.error.card",
+  "reservation.pay.error.source",
   "reservation.pay.error.yapeLimit",
   "reservation.pay.error.unavailable",
   "reservation.pay.error.retry",

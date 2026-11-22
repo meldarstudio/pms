@@ -349,6 +349,19 @@ describe("the card form", () => {
     expect(types(effects)).not.toContain("startPayment");
   });
 
+  it("frees the button and says nothing was charged when Culqi refuses the payment details", () => {
+    const { state, effects } = drive(
+      openReview(),
+      ...toSecurityCheck,
+      { type: "securityTokenRead", token: TURNSTILE },
+      { type: "cardFormRefused" },
+    );
+
+    expect(payBusy(state)).toBe(false);
+    expect(state.formError).toBe("reservation.pay.error.source");
+    expect(types(effects)).not.toContain("startPayment");
+  });
+
   it("offers only cards when the initial payment is above Yape's S/ 2,000 limit", () => {
     const { effects } = drive(
       openReview({ view: quoteView({ total: 400002 }) }),

@@ -514,6 +514,8 @@ export const ui = {
       "This review can't record another agreement, so nothing was charged. Your details stay on this page. Message us on WhatsApp to reserve.",
     "reservation.pay.error.card":
       "The payment form couldn't open. Nothing was charged: check your connection and try again.",
+    "reservation.pay.error.source":
+      "Culqi couldn't accept those payment details, so nothing was charged. Check your card details, or your Yape phone number and a new approval code, and try again.",
     "reservation.pay.error.yapeLimit":
       "Yape accepts payments of up to S/ 2,000, so nothing was charged. Pay this amount by card.",
     "reservation.pay.error.unavailable":
@@ -1200,6 +1202,8 @@ export const ui = {
       "Esta revisión no puede registrar otro acuerdo, así que no se cobró nada. Sus datos siguen en esta página. Escríbanos por WhatsApp para reservar.",
     "reservation.pay.error.card":
       "No se pudo abrir el formulario de pago. No se cobró nada: revise su conexión e intente de nuevo.",
+    "reservation.pay.error.source":
+      "Culqi no pudo aceptar esos datos de pago, así que no se cobró nada. Revise los datos de su tarjeta, o su número de Yape y un nuevo código de aprobación, e intente de nuevo.",
     "reservation.pay.error.yapeLimit":
       "Yape acepta pagos de hasta S/ 2,000, así que no se cobró nada. Pague este monto con tarjeta.",
     "reservation.pay.error.unavailable":
