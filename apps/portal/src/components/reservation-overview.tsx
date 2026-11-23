@@ -45,7 +45,7 @@ export function ReservationOverview({
             <div className="flex min-w-0 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                 <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
-                  <span className="max-sm:sr-only">Reserva </span>#{detail.code}
+                  <span className="sr-only">Reserva </span>#{detail.code}
                 </p>
                 <ReservationStatusBadge status={detail.status} />
                 <span className="text-xs text-muted-foreground">
