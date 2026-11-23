@@ -6,6 +6,7 @@ import type {
   ReservationDetail,
   ReservationDetailStatus,
   RoomType,
+  StaffReservationChannel,
   StayingGuest,
 } from "./api.ts";
 import { nightsBetween } from "./dates.ts";
@@ -237,6 +238,16 @@ export function contactPayload(values: z.input<typeof contactSchema>) {
   };
 }
 export const notesSchema = z.object({ notes: z.string().max(2000, "Máximo 2000 caracteres.") });
+export const channelSchema = z.object({
+  channel: z.string().pipe(
+    z.enum(["walk_in", "whatsapp", "expedia"] satisfies StaffReservationChannel[], {
+      error: "Selecciona el canal de la reserva.",
+    }),
+  ),
+});
+export const channelCorrectionSchema = z.object({
+  channel: z.union([z.literal(""), channelSchema.shape.channel]),
+});
 export function guestDefaults(guest: StayingGuest): GuestValues {
   return {
     ...guest,
@@ -384,6 +395,7 @@ export const newBookingSchema = (types: RoomType[]) =>
   z.intersection(
     detailsSchema(types),
     contactSchema.extend({
+      channel: channelSchema.shape.channel,
       notes: notesSchema.shape.notes,
       discount: discountSchema.shape.amount,
       ratePlan: z.enum(["flexible", "non_refundable"] satisfies RatePlanCode[]),

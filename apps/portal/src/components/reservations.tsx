@@ -54,7 +54,13 @@ import { dateOnlyCarrier, propertyToday } from "@/lib/property-calendar";
 import { addDateLabelDays } from "@/lib/dates";
 import { useMissingSetup, useReservationList } from "@/lib/queries";
 import { formatMoney } from "@/lib/money";
-import { occupantsLabel, roomsLabel, roomsSummary, stayDateLabel } from "@/lib/reservation-list";
+import {
+  occupantsLabel,
+  reservationChannelLabels,
+  roomsLabel,
+  roomsSummary,
+  stayDateLabel,
+} from "@/lib/reservation-list";
 import {
   viewDefaults,
   type ReservationsSearch,
@@ -176,6 +182,7 @@ function ReservationCardsSkeleton() {
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-5 w-28" />
               <div className="grid grid-cols-2 gap-3">
                 {[0, 1].map((column) => (
                   <div key={column} className="flex flex-col gap-px">
@@ -208,6 +215,9 @@ function ReservationRowsSkeleton() {
           </TableCell>
           <TableCell>
             <Skeleton className="h-5 w-24" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-16" />
           </TableCell>
           <TableCell>
             <Skeleton className="h-4 w-10" />
@@ -269,6 +279,7 @@ export function Reservations({
     checkOut: search.view === "departures" ? search.day : undefined,
     balance: search.balance === "all" ? undefined : search.balance,
     assignment: search.assignment === "all" ? undefined : search.assignment,
+    channel: search.channel === "all" ? undefined : search.channel,
     sort: search.sort,
     direction: search.direction,
     offset: search.page * search.size,
@@ -359,6 +370,7 @@ export function Reservations({
       <TableRow>
         {sortHeader("guestName", "Contacto principal")}
         <TableHead scope="col">Estado</TableHead>
+        <TableHead scope="col">Canal</TableHead>
         <TableHead scope="col">Habitaciones</TableHead>
         <TableHead scope="col">Ocupantes</TableHead>
         {sortHeader("checkIn", "Check-in")}
@@ -651,6 +663,7 @@ export function Reservations({
                           >
                             Habitaciones: <ReservationRooms rooms={row.rooms} />
                           </p>
+                          <p>Canal: {reservationChannelLabels[row.channel]}</p>
                           <dl className="grid grid-cols-2 gap-3">
                             <div>
                               <dt className="text-muted-foreground">Entrada</dt>
@@ -708,6 +721,11 @@ export function Reservations({
                           </TableCell>
                           <TableCell>
                             <ReservationStatusBadge status={row.status} />
+                          </TableCell>
+                          <TableCell
+                            className={cn(row.channel === "unspecified" && "text-muted-foreground")}
+                          >
+                            {reservationChannelLabels[row.channel]}
                           </TableCell>
                           <TableCell>
                             <span

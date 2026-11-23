@@ -1,4 +1,6 @@
+import type { ReservationChannel } from "./api.ts";
 import { addDateLabelDays } from "./dates.ts";
+import { reservationChannels } from "./reservation-list.ts";
 import { propertyToday } from "./property-calendar.ts";
 import {
   ReservationStatusSelection,
@@ -22,6 +24,7 @@ export type ReservationsSearch = {
   statuses: SerializedReservationStatuses;
   balance: (typeof reservationBalances)[number];
   assignment: "all" | "assigned" | "unassigned";
+  channel: "all" | ReservationChannel;
   sort: ReservationSort;
   direction: "asc" | "desc";
   size: 25 | 50 | 100;
@@ -101,6 +104,7 @@ export function reservationsSearch(search: Record<string, unknown>): Reservation
     statuses: view === "in-house" ? defaults.statuses : statuses.toSearch(),
     balance: choice(search.balance, reservationBalances, "all"),
     assignment: choice(search.assignment, ["all", "assigned", "unassigned"], "all"),
+    channel: choice(search.channel, ["all", ...reservationChannels], "all"),
     sort: choice(search.sort, ["checkIn", "checkOut", "guestName", "balance"], defaults.sort),
     direction: choice(search.direction, ["asc", "desc"], defaults.direction),
     size: size === 25 || size === 100 ? size : 50,

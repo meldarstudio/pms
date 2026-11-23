@@ -404,6 +404,7 @@ describe("payment outcomes", () => {
     for (const fullName of ["Luis Rojas", "Eva Soto"]) {
       const saved = await db.request("/reservations", "POST", {
         requestId: crypto.randomUUID(),
+        channel: "walk_in",
         checkIn: "2026-10-21",
         checkOut: "2026-10-22",
         guest: { fullName },
@@ -439,6 +440,7 @@ describe("payment outcomes", () => {
     await paid(checkout);
     const saved = await db.request("/reservations", "POST", {
       requestId: crypto.randomUUID(),
+      channel: "walk_in",
       checkIn: "2026-10-21",
       checkOut: "2026-10-22",
       guest: { fullName: "Luis Rojas" },

@@ -38,7 +38,7 @@ beforeEach(() => {
     stayingGuests: [],
     checkIn: "2026-10-19",
     checkOut: "2026-10-21",
-    source: "direct",
+    channel: "walk_in",
     currency: "PEN",
     subtotalCents: 30050,
     discountCents: 5050,

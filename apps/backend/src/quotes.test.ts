@@ -77,7 +77,7 @@ describe("quotes", () => {
 
     expect(saved).toMatchObject({
       status: "confirmed",
-      source: "online",
+      channel: "online",
       guest: { fullName: "Ana Torres", email: "ana@example.com" },
       checkIn: "2026-10-20",
       checkOut: "2026-10-22",
@@ -90,6 +90,18 @@ describe("quotes", () => {
     expect(db.sqlite.prepare("SELECT count(*) AS n FROM reservation_access").get()).toEqual({
       n: 0,
     });
+  });
+
+  it("keeps a web reservation's channel, which payment recovery uses to find rebookings", async () => {
+    const id = await save((await quote()).id);
+
+    const relabel = await db.request(`/reservations/${id}/commands`, "POST", {
+      requestId: crypto.randomUUID(),
+      actions: [{ type: "set-channel", channel: "expedia" }],
+    });
+
+    expect(relabel.status).toBe(400);
+    expect((await reservation(id)).channel).toBe("online");
   });
 
   it("saves only the first of two quotes for the last room", async () => {

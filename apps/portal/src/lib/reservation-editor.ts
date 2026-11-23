@@ -110,7 +110,9 @@ export function availableRoomTypeIds(
 }
 
 export function validationPreviewActions(actions: WorkflowAction[]) {
-  return actions.filter((action) => !["notes", "contact", "set-guests"].includes(action.type));
+  return actions.filter(
+    (action) => !["notes", "set-channel", "contact", "set-guests"].includes(action.type),
+  );
 }
 
 export function hasBillingChanges(detail: ReservationDetail, actions: WorkflowAction[]) {

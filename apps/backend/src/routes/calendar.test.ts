@@ -31,6 +31,7 @@ type Created = {
 async function create(guestName: string, dates: { checkIn: string; checkOut: string }, count = 1) {
   const response = await request("/reservations", "POST", {
     requestId: crypto.randomUUID(),
+    channel: "walk_in",
     ...dates,
     guest: { fullName: guestName },
     rooms: Array.from({ length: count }, () => ({

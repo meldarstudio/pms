@@ -172,6 +172,16 @@ const staffStatusSchema = z.enum([
 ]);
 const reservationStatusSchema = z.enum([...staffStatusSchema.options, "unfulfilled"]);
 
+export const staffReservationChannelSchema = z.enum(["expedia", "whatsapp", "walk_in"], {
+  error: "unknown reservation channel",
+});
+export const reservationChannelSchema = z.enum(
+  ["online", ...staffReservationChannelSchema.options, "unspecified"],
+  { error: "unknown reservation channel" },
+);
+export type StaffReservationChannel = z.infer<typeof staffReservationChannelSchema>;
+export type ReservationChannel = z.infer<typeof reservationChannelSchema>;
+
 export const reservationListQuerySchema = listQuerySchema.extend({
   paginated: z
     .enum(["true", "false"])
@@ -190,6 +200,7 @@ export const reservationListQuerySchema = listQuerySchema.extend({
   balance: z.enum(["outstanding", "settled", "credit", "unresolved"]).optional(),
   refund: z.enum(["due", "requested"]).optional(),
   assignment: z.enum(["assigned", "unassigned"]).optional(),
+  channel: reservationChannelSchema.optional(),
   sort: z.enum(["checkIn", "checkOut", "guestName", "balance"]).optional(),
   direction: z.enum(["asc", "desc"]).optional(),
   guestId: z.string().min(1).optional(),
@@ -332,6 +343,7 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
     .object({ type: z.literal("redeem-coupon"), code: couponCodeSchema, amountCents: cents })
     .strict(),
   z.object({ type: z.literal("notes"), notes: z.string().max(2000) }).strict(),
+  z.object({ type: z.literal("set-channel"), channel: staffReservationChannelSchema }).strict(),
 ]);
 export const workflowCommandSchema = z
   .object({
@@ -346,6 +358,7 @@ export const workflowCreateSchema = z
   .object({
     requestId: z.uuid(),
     guest: guestFields,
+    channel: staffReservationChannelSchema,
     checkIn: dateSchema,
     checkOut: dateSchema,
     rooms: z.array(workflowRoom).min(1).max(60),

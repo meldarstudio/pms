@@ -86,6 +86,13 @@ _Avoid_: Verified phone
 The optional named staying guests, which may be incomplete even after check-in. The website does not collect one.
 _Avoid_: Occupancy
 
+**Reservation channel / Canal**:
+Where a reservation was booked: Web for one saved by a public checkout, otherwise the
+Expedia, WhatsApp or walk-in channel staff record when creating it and may correct later.
+Staff never choose or change Web. Reservations saved before channels were recorded are
+Sin especificar until staff set one.
+_Avoid_: Source, origin, booking site
+
 **Reservation notes**:
 Staff remarks kept with one reservation only.
 

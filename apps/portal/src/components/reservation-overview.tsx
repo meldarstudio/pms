@@ -14,6 +14,7 @@ import { ReservationStatusMenu } from "@/components/reservation-status-menu";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
 import { phoneDisplay } from "@/lib/phone";
+import { reservationChannelLabels } from "@/lib/reservation-list";
 import { NationalityFlag } from "@/components/workflow-fields";
 import { format } from "@/lib/dates";
 import { propertyToday } from "@/lib/property-calendar";
@@ -47,6 +48,10 @@ export function ReservationOverview({
                   <span className="max-sm:sr-only">Reserva </span>#{detail.code}
                 </p>
                 <ReservationStatusBadge status={detail.status} />
+                <span className="text-xs text-muted-foreground">
+                  <span className="sr-only">Canal: </span>
+                  {reservationChannelLabels[detail.channel]}
+                </span>
               </div>
               <div className="flex min-w-0 items-start gap-2.5">
                 <NationalityFlag nationality={detail.guest.nationality} className="mt-2 h-4 w-6" />
@@ -122,6 +127,8 @@ function ContactLine({
 }) {
   const { phone, email } = detail.guest;
   const shown = phone ? phoneDisplay(phone) : null;
+  const editLabel =
+    detail.channel === "online" ? "Editar contacto y notas" : "Editar contacto, canal y notas";
   return (
     <section
       role="region"
@@ -164,8 +171,8 @@ function ContactLine({
           variant="ghost"
           size="icon-xs"
           className="-ml-2 pointer-coarse:size-(--control-h-lg) @max-lg/overview-main:ml-0"
-          aria-label="Editar contacto y notas"
-          title="Editar contacto y notas"
+          aria-label={editLabel}
+          title={editLabel}
           onClick={() => edit({ kind: "contact" })}
         >
           <PencilIcon />

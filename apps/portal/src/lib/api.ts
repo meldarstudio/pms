@@ -327,6 +327,9 @@ export type ReservationDetailStatus =
   | "no_show"
   | "unfulfilled";
 
+export type StaffReservationChannel = "expedia" | "whatsapp" | "walk_in";
+export type ReservationChannel = "online" | StaffReservationChannel | "unspecified";
+
 export type ReservationDetail = {
   status: ReservationDetailStatus;
   cancellationReason: string | null;
@@ -352,7 +355,7 @@ export type ReservationDetail = {
   stayingGuests: StayingGuest[];
   checkIn: string;
   checkOut: string;
-  source: string;
+  channel: ReservationChannel;
   currency: string;
   totalCents: number;
   subtotalCents: number;
@@ -736,6 +739,7 @@ export type ReservationListParams = {
   balance?: "outstanding" | "settled" | "credit" | "unresolved";
   refund?: "due" | "requested";
   assignment?: "assigned" | "unassigned";
+  channel?: ReservationChannel;
   sort: "checkIn" | "checkOut" | "guestName" | "balance";
   direction: "asc" | "desc";
   limit: number;

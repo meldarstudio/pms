@@ -36,6 +36,7 @@ const request: TestDb["request"] = (...args) => db.request(...args);
 async function create(count = 1, dates = { checkIn: "2026-10-10", checkOut: "2026-10-13" }) {
   const response = await request("/reservations", "POST", {
     requestId: crypto.randomUUID(),
+    channel: "walk_in",
     ...dates,
     guest: { fullName: "Ada Lovelace" },
     rooms: Array.from({ length: count }, () => ({
@@ -51,6 +52,7 @@ async function stay(checkIn: string, checkOut: string, nightCents: number) {
   const response = await atBaseRate(db.sqlite, "type", nightCents, () =>
     request("/reservations", "POST", {
       requestId: crypto.randomUUID(),
+      channel: "walk_in",
       checkIn,
       checkOut,
       guest: { fullName: "Ada Lovelace" },
@@ -169,6 +171,7 @@ it("lists assignable rooms using the same holding statuses and [start, end) over
   ]);
   const assigned = await request("/reservations", "POST", {
     requestId: crypto.randomUUID(),
+    channel: "walk_in",
     checkIn: "2026-10-12",
     checkOut: "2026-10-14",
     guest: { fullName: "Ada Lovelace" },
@@ -263,6 +266,7 @@ describe("Creation pricing", () => {
   const create = (priced: typeof rooms) =>
     request("/reservations", "POST", {
       requestId: crypto.randomUUID(),
+      channel: "walk_in",
       ...twoNights,
       guest: { fullName: "Ada Lovelace" },
       rooms: priced.map((room) => ({ ...room, adults: 1, children: 0 })),
@@ -310,6 +314,7 @@ describe("Non-refundable reservations", () => {
   const twoNights = { checkIn: "2026-10-10", checkOut: "2026-10-12" };
   const body = (room: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) => ({
     requestId: crypto.randomUUID(),
+    channel: "walk_in",
     ...twoNights,
     guest: { fullName: "Ada Lovelace" },
     rooms: [{ roomTypeId: "type", adults: 1, children: 0, ...room }],
@@ -317,7 +322,7 @@ describe("Non-refundable reservations", () => {
     ...extra,
   });
   async function previewNew(input: ReturnType<typeof body>) {
-    const { requestId: _, guest: __, ...priced } = input;
+    const { requestId: _, guest: __, channel: ___, ...priced } = input;
     const rooms = priced.rooms.map(({ adults: _a, children: _c, ...room }) => room);
     const response = await request("/reservations/preview", "POST", { ...priced, rooms });
     const preview = (await response.json()) as { billing: Detail };
@@ -1395,6 +1400,7 @@ describe("reservation workflow", () => {
   it("deduplicates concurrent creation and rejects payload changes", async () => {
     const input = {
       requestId: crypto.randomUUID(),
+      channel: "walk_in",
       guest: { fullName: "Retry Guest" },
       checkIn: "2026-10-10",
       checkOut: "2026-10-11",
@@ -1421,6 +1427,7 @@ describe("reservation workflow", () => {
   it("saves the primary contact, reservation notes, and initial discount atomically", async () => {
     const input = {
       requestId: crypto.randomUUID(),
+      channel: "walk_in",
       guest: { fullName: "Ada Lovelace", email: "ada@example.com", phone: "+51 999 888 777" },
       checkIn: "2026-10-10",
       checkOut: "2026-10-13",
@@ -1458,6 +1465,7 @@ describe("reservation workflow", () => {
       [1, 2].map(async () =>
         request("/reservations", "POST", {
           requestId: crypto.randomUUID(),
+          channel: "walk_in",
           guest: { fullName: "Last Room" },
           checkIn: "2026-10-10",
           checkOut: "2026-10-13",
@@ -1598,6 +1606,7 @@ describe("reservation dates and lifecycle", () => {
     seedRooms(db.sqlite, "other", { "201": "201" });
     const response = await request("/reservations", "POST", {
       requestId: crypto.randomUUID(),
+      channel: "walk_in",
       checkIn: "2026-10-10",
       checkOut: "2026-10-11",
       guest: { fullName: "Ada Lovelace" },
@@ -1690,6 +1699,7 @@ async function book(
 ) {
   const response = await request("/reservations", "POST", {
     requestId: crypto.randomUUID(),
+    channel: "walk_in",
     ...dates,
     guest: { fullName },
     rooms: [{ roomTypeId: "type", adults: 1, children: 0 }],

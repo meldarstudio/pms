@@ -130,7 +130,7 @@ export async function saveQuote(
         guestId,
         checkIn: quote.checkIn,
         checkOut: quote.checkOut,
-        source: "online",
+        channel: "online",
         notes: options.notes ?? null,
         quoteId,
         publicCheckoutId: options.publicCheckoutId ?? null,

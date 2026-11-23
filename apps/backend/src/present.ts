@@ -1,5 +1,6 @@
 import type { guests, roomTypes, rooms } from "./db/schema";
 import { cancellationFields } from "./lib/cancellation";
+import { presentChannel } from "./lib/channels";
 import { nightsBetween } from "./lib/dates";
 import { acceptedTerms } from "./lib/rate-plans";
 import { presentRefunds } from "./lib/refunds";
@@ -81,7 +82,7 @@ export function presentReservation(input: State, lookups: RoomLookups, currency:
     stayingGuests: input.stayingGuests,
     checkIn: input.reservation.checkIn,
     checkOut: input.reservation.checkOut,
-    source: input.reservation.source,
+    channel: presentChannel(input.reservation.channel),
     notes: input.reservation.notes,
     createdAt: input.reservation.createdAt,
     currency,

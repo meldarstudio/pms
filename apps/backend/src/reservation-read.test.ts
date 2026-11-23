@@ -35,6 +35,7 @@ afterEach(() => {
 async function book(checkIn: string, checkOut: string, rooms = 1): Promise<Saved> {
   const response = await db.request("/reservations", "POST", {
     requestId: crypto.randomUUID(),
+    channel: "walk_in",
     checkIn,
     checkOut,
     guest: { fullName: "Ada Lovelace" },

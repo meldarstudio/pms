@@ -405,7 +405,7 @@ async function rebookedSince(db: Db, quote: Quote, attempt: Pick<Attempt, "email
     .innerJoin(guests, eq(guests.id, reservations.guestId))
     .where(
       and(
-        eq(reservations.source, "online"),
+        eq(reservations.channel, "online"),
         ne(reservations.quoteId, quote.id),
         inArray(reservations.status, inventoryStatuses),
         lt(reservations.checkIn, quote.checkOut),

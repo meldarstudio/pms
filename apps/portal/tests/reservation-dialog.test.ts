@@ -119,7 +119,7 @@ function detail(): ReservationDetail {
     stayingGuests: [],
     checkIn: "2026-10-14",
     checkOut: "2026-10-16",
-    source: "direct",
+    channel: "walk_in",
     currency: "PEN",
     totalCents: 30000,
     subtotalCents: 30000,
@@ -641,6 +641,7 @@ it("defaults to Flexible, previews and creates under the chosen rate plan", asyn
   assert.equal(checkedRatePlan(), "Flexible");
   assert.equal(previews.at(-1)?.ratePlan, "flexible");
   await fill("fullName", "Ada Lovelace");
+  await choose("Canal", "Walk-in");
   await submit();
   await until(() => writes.length === 1, "A Flexible reservation must save");
   assert.equal(writes[0].ratePlan, "flexible");
@@ -690,6 +691,7 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
     "Contacto principal",
   );
   await fill("fullName", "  Ada Lovelace  ");
+  await choose("Canal", "Expedia");
   await fill("email", "  ada@example.com  ");
   await fill("phone", "+51 999 888 777");
   assert.equal(fieldTrigger("Nacionalidad").textContent, "Perú");
@@ -724,6 +726,7 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
     phone: "+51999888777",
     nationality: "PE",
   });
+  assert.equal(writes[0].channel, "expedia");
   assert.equal(writes[0].notes, "Llegada después de las 22:00");
   assert.equal(writes[0].discountCents, 3000);
   assert.equal(writes[0].checkOut, "2026-10-16");
@@ -870,6 +873,7 @@ for (const { name, cached, fresh, roomId, shown } of [
     await React.act(async () => button("Toggle").click());
     await until(() => !!held.request, "Reopening must refetch the cached availability");
     await fill("fullName", "Ada Lovelace");
+    await choose("Canal", "Walk-in");
     await flush();
     assert.equal(button("Crear reserva").disabled, true);
     await submit();
@@ -896,6 +900,7 @@ it("preserves a failed creation draft and safely retries until its payload chang
   });
   await renderNewBooking();
   await fill("fullName", "Ada Lovelace");
+  await choose("Canal", "Walk-in");
   await fill("notes", "Llegada tarde");
   await until(() => !button("Crear reserva").disabled);
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -943,6 +948,7 @@ it.each([
     page.api.catalog.rooms.push({ id: "room-2", number: "102", roomTypeId: "double" });
     await renderNewBooking();
     await fill("fullName", "Ada Lovelace");
+    await choose("Canal", "Walk-in");
     await React.act(async () => button("Agregar habitación").click());
     await choose("Hab.", "102", 1);
     await until(() => !button("Crear reserva").disabled);
@@ -995,6 +1001,7 @@ it("protects a new reservation draft, blocks closing during creation, then opens
   await render(React.createElement(NewDialog));
   await until(() => !button("Crear reserva").disabled, "New dialog must load");
   await fill("fullName", "Ada Lovelace");
+  await choose("Canal", "Walk-in");
   await React.act(async () => button("Cerrar").click());
   assert.equal(closed, 0);
   assert.ok(window.document.body.textContent.includes("Descartar y salir"));

@@ -38,7 +38,7 @@ const ana: ReservationDetail & { guestName: string } = {
   stayingGuests: [],
   checkIn: "2026-10-31",
   checkOut: "2026-11-02",
-  source: "direct",
+  channel: "walk_in",
   currency: "PEN",
   totalCents: 30000,
   subtotalCents: 30000,

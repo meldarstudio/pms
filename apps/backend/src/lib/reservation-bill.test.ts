@@ -261,6 +261,7 @@ describe("SQL balance", () => {
     const response = await atBaseRate(db.sqlite, "type", nightCents, () =>
       db.request("/reservations", "POST", {
         requestId: crypto.randomUUID(),
+        channel: "walk_in",
         checkIn,
         checkOut,
         guest: { fullName: "Ada Lovelace" },

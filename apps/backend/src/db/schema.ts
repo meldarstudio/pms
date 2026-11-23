@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
-import type { CheckoutLanguage, RoomRequest } from "@pms/shared";
+import type { CheckoutLanguage, RoomRequest, StaffReservationChannel } from "@pms/shared";
 import type { PricedNight } from "../lib/pricing";
 import type { RatePlanCode, RatePlanTerms } from "../lib/rate-plans";
 
@@ -145,6 +145,11 @@ export const reservationStatuses = [
   "unfulfilled",
 ] as const;
 export type ReservationStatus = (typeof reservationStatuses)[number];
+export const unrecordedChannel = "desk";
+export type StoredReservationChannel =
+  | "online"
+  | StaffReservationChannel
+  | typeof unrecordedChannel;
 
 export const reservations = sqliteTable(
   "reservations",
@@ -161,7 +166,7 @@ export const reservations = sqliteTable(
       .references(() => guests.id),
     checkIn: text("check_in").notNull(),
     checkOut: text("check_out").notNull(),
-    source: text("source").notNull().default("desk"),
+    channel: text("source").$type<StoredReservationChannel>().notNull().default(unrecordedChannel),
     notes: text("notes"),
     createdAt: text("created_at").notNull(),
     ratePlan: text("rate_plan").notNull().default("flexible"),
