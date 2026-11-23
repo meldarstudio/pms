@@ -38,6 +38,7 @@ import {
 } from "@/lib/queries";
 import { ratePlanLabels, ratePlanSummary } from "@/lib/rate-plans";
 import { changeCheckIn, minimumCheckOut } from "@/lib/reservation-editor";
+import { reservationChannelLabels, staffReservationChannels } from "@/lib/reservation-list";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
 import {
   newBookingSchema,
@@ -78,6 +79,7 @@ export function NewBooking({
       email: "",
       phone: phoneDraft(null),
       nationality: "PE",
+      channel: "",
       notes: "",
       discount: "0",
       rooms: [
@@ -119,6 +121,7 @@ export function NewBooking({
           ...(parsed.email ? { email: parsed.email } : {}),
           ...(parsed.nationality ? { nationality: parsed.nationality } : {}),
         },
+        channel: parsed.channel,
         checkIn: parsed.checkIn,
         checkOut: parsed.checkOut,
         rooms: workflowDrafts(parsed).map((draft) => draft.room),
@@ -485,6 +488,18 @@ export function NewBooking({
               </FieldGroup>
             </FieldSet>
             <FieldGroup>
+              <form.AppField name="channel">
+                {(field) => (
+                  <field.Choice
+                    label="Canal"
+                    placeholder="¿Por dónde llegó la reserva?"
+                    options={staffReservationChannels.map((channel) => ({
+                      value: channel,
+                      label: reservationChannelLabels[channel],
+                    }))}
+                  />
+                )}
+              </form.AppField>
               <form.AppField name="notes">
                 {(field) => (
                   <field.Text

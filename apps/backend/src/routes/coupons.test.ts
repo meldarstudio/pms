@@ -24,6 +24,7 @@ async function stay(checkIn: string, checkOut: string, nightCents = 10000) {
   const response = await atBaseRate(db.sqlite, "type", nightCents, () =>
     db.request("/reservations", "POST", {
       requestId: crypto.randomUUID(),
+      channel: "walk_in",
       checkIn,
       checkOut,
       guest: { fullName: "Ada Lovelace" },
@@ -146,6 +147,7 @@ describe("redeeming future-stay coupons", () => {
     await db.signIn();
     const response = await db.request("/reservations", "POST", {
       requestId: crypto.randomUUID(),
+      channel: "walk_in",
       checkIn: "2027-01-10",
       checkOut: "2027-01-12",
       guest: { fullName: "Grace Hopper" },

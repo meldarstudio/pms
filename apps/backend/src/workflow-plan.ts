@@ -258,6 +258,11 @@ const handlers: Handlers = {
   notes(action, { state }) {
     state.reservation.notes = action.notes || null;
   },
+  "set-channel"(action, { state }) {
+    if (state.reservation.channel === "online")
+      fail("a web reservation's channel cannot be changed");
+    state.reservation.channel = action.channel;
+  },
   async "add-room"(action, { db, state, now }) {
     if (state.lines.length >= 60) fail("reservation cannot exceed 60 rooms");
     const nights = await price(

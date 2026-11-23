@@ -1,5 +1,6 @@
 import { parseISO } from "date-fns";
 import { format } from "./dates.ts";
+import type { ReservationChannel, StaffReservationChannel } from "./api.ts";
 import type { ReservationStatus } from "./route-search.ts";
 
 export const reservationStatusOptions: {
@@ -15,6 +16,26 @@ export const reservationStatusOptions: {
 ];
 
 const otherStatusLabels: Record<string, string> = { unfulfilled: "Cancelada" };
+
+export const reservationChannelLabels: Record<ReservationChannel, string> = {
+  online: "Web",
+  expedia: "Expedia",
+  whatsapp: "WhatsApp",
+  walk_in: "Walk-in",
+  unspecified: "Sin especificar",
+};
+
+export const staffReservationChannels: readonly StaffReservationChannel[] = [
+  "walk_in",
+  "whatsapp",
+  "expedia",
+];
+
+export const reservationChannels: readonly ReservationChannel[] = [
+  "online",
+  ...staffReservationChannels,
+  "unspecified",
+];
 
 export function reservationStatusLabel(status: string) {
   return (

@@ -32,7 +32,13 @@ import {
 } from "@/components/ui/drawer";
 import { useIsMobile, useIsTablet } from "@/hooks/use-mobile";
 import { FieldGroup, FieldDescription, FieldError } from "@/components/ui/field";
-import type { ReservationCoupon, ReservationDetail, WorkflowAction } from "@/lib/api";
+import type {
+  ReservationChannel,
+  ReservationCoupon,
+  ReservationDetail,
+  StaffReservationChannel,
+  WorkflowAction,
+} from "@/lib/api";
 import {
   useReservationCommands,
   useReservationPreview,
@@ -44,12 +50,17 @@ import {
   contactSchema,
   contactDefaults,
   contactPayload,
+  channelCorrectionSchema,
   notesSchema,
   paymentVoidSchema,
   cancellationSchema,
 } from "@/lib/reservation-form-schemas";
 import { setServerErrors } from "@/lib/form-errors";
-import { reservationStatusLabel } from "@/lib/reservation-list";
+import {
+  reservationChannelLabels,
+  reservationStatusLabel,
+  staffReservationChannels,
+} from "@/lib/reservation-list";
 import { translateError } from "@/lib/errors";
 import { toast } from "sonner";
 import { toastError } from "@/lib/toast";
@@ -73,7 +84,7 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
     case "stay":
       return "Editar estadía";
     case "contact":
-      return "Contacto y notas";
+      return detail.channel === "online" ? "Contacto y notas" : "Contacto, canal y notas";
     case "guest":
       return target.id ? "Editar huésped" : "Agregar huésped";
     case "payment":
@@ -99,7 +110,13 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
   }
 }
 
-const contactAndNotesSchema = contactSchema.extend(notesSchema.shape);
+const contactAndNotesSchema = contactSchema.extend({
+  ...notesSchema.shape,
+  ...channelCorrectionSchema.shape,
+});
+
+const editableChannel = (channel: ReservationChannel): StaffReservationChannel | "" =>
+  channel === "online" || channel === "unspecified" ? "" : channel;
 
 export function ReservationPageEditor({
   target,
@@ -397,6 +414,7 @@ function ReservationActionForm({
   const [defaults] = useState(() => ({
     ...contactDefaults(detail),
     notes: detail.notes ?? "",
+    channel: editableChannel(detail.channel),
     reason: "",
     voidReason: "",
   }));
@@ -437,6 +455,8 @@ function ReservationActionForm({
             )
           )
             actions.push({ type: "contact", contact: contactPayload(value) });
+          if (value.channel && value.channel !== defaults.channel)
+            actions.push({ type: "set-channel", channel: value.channel });
           if (value.notes !== defaults.notes) actions.push({ type: "notes", notes: value.notes });
           break;
         }
@@ -523,6 +543,20 @@ function ReservationActionForm({
                 </form.AppField>
                 <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
                 <form.AppField name="nationality">{(field) => <field.Nationality />}</form.AppField>
+                {detail.channel !== "online" && (
+                  <form.AppField name="channel">
+                    {(field) => (
+                      <field.Choice
+                        label="Canal"
+                        placeholder={reservationChannelLabels.unspecified}
+                        options={staffReservationChannels.map((channel) => ({
+                          value: channel,
+                          label: reservationChannelLabels[channel],
+                        }))}
+                      />
+                    )}
+                  </form.AppField>
+                )}
                 <form.AppField name="notes">
                   {(field) => (
                     <field.Text label="Notas para esta reserva" type="textarea" max={2000} />

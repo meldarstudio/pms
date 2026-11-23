@@ -432,6 +432,7 @@ const examples = [
 ];
 
 const dirtyRooms = ["202", "204", "208"];
+const sampleStaffChannels = ["walk_in", "expedia", "whatsapp", "desk"];
 
 const stayingGuests = {
   "in-house": [
@@ -732,7 +733,7 @@ export function buildResetSql(value, schemaObjects) {
         status,
         cancelled_at: cancelledAt,
         cancellation_reason: status === "cancelled" ? (example.reason ?? null) : null,
-        source: example.source ?? "desk",
+        source: example.source ?? sampleStaffChannels[index % sampleStaffChannels.length],
         notes: "Reserva de prueba. Restablecer con pnpm db:reset:local.",
         created_at: created,
         rate_plan: plan.plan,

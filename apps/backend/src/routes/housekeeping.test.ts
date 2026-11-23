@@ -147,6 +147,7 @@ describe("housekeeping status elsewhere", () => {
   async function reservation() {
     const response = await request("/reservations", "POST", {
       requestId: crypto.randomUUID(),
+      channel: "walk_in",
       checkIn: "2026-10-10",
       checkOut: "2026-10-12",
       guest: { fullName: "Ada" },

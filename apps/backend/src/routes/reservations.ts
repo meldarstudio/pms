@@ -39,6 +39,7 @@ import { staffReservationAccess } from "../reservation-access";
 import { loadReservations, presentReservations, readReservation } from "../reservation-read";
 import { presentNight, type presentReservation } from "../present";
 import { balanceCentsSql, roomCharges, stayBill, unresolvedBillSql } from "../lib/reservation-bill";
+import { storedChannel } from "../lib/channels";
 
 export const reservationRoutes = new Hono<Env>();
 reservationRoutes.get("/", validate("query", reservationListQuerySchema), async (c) => {
@@ -52,6 +53,7 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
   if (q.to) filters.push(lte(reservations.checkIn, q.to));
   if (q.status) filters.push(eq(reservations.status, q.status));
   if (q.statuses) filters.push(inArray(reservations.status, q.statuses));
+  if (q.channel) filters.push(eq(reservations.channel, storedChannel(q.channel)));
   if (q.assignment) {
     const unassigned = exists(
       db

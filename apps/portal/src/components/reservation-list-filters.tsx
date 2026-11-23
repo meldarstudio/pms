@@ -22,7 +22,11 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { ChoiceField } from "@/components/workflow-fields";
-import { reservationStatusLabel } from "@/lib/reservation-list";
+import {
+  reservationChannelLabels,
+  reservationChannels,
+  reservationStatusLabel,
+} from "@/lib/reservation-list";
 import {
   ReservationStatusSelection,
   reservationStatusValues,
@@ -42,6 +46,7 @@ export function ReservationListFilters({
   const filterCount =
     Number(search.balance !== "all") +
     Number(search.assignment !== "all") +
+    Number(search.channel !== "all") +
     Number(selectedStatuses.toSearch() !== viewDefaults(search.view).statuses);
   const trigger = (
     <Button
@@ -72,6 +77,7 @@ export function ReservationListFilters({
           statuses: viewDefaults(search.view).statuses,
           balance: "all",
           assignment: "all",
+          channel: "all",
         })
       }
     >
@@ -132,6 +138,18 @@ export function ReservationListFilters({
         onChange={(assignment) =>
           onChange({ assignment: assignment as ReservationsSearch["assignment"] })
         }
+      />
+      <ChoiceField
+        label="Canal"
+        value={search.channel}
+        options={[
+          { value: "all", label: "Cualquier canal" },
+          ...reservationChannels.map((channel) => ({
+            value: channel,
+            label: reservationChannelLabels[channel],
+          })),
+        ]}
+        onChange={(channel) => onChange({ channel: channel as ReservationsSearch["channel"] })}
       />
     </FieldGroup>
   );

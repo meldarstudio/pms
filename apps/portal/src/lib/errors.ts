@@ -62,6 +62,9 @@ const messages: Record<string, string> = {
   "phone is required": "Ingresa el teléfono.",
   "unknown language": "Idioma no admitido.",
   "notes are too long": "Las notas no pueden superar los 2000 caracteres.",
+  "unknown reservation channel": "Selecciona el canal de la reserva.",
+  "a web reservation's channel cannot be changed":
+    "El canal de una reserva hecha en la web no se puede cambiar.",
   "online payments are paused":
     "Los pagos en línea están en pausa. La reserva en curso se conserva; inténtalo más tarde o contacta al hotel.",
   "too many payment attempts":

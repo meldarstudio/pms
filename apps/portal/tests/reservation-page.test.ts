@@ -94,7 +94,7 @@ beforeEach(() => {
     stayingGuests: [],
     checkIn: "2026-10-19",
     checkOut: "2026-10-21",
-    source: "direct",
+    channel: "walk_in",
     currency: "PEN",
     subtotalCents: 30000,
     discountCents: 0,
@@ -502,7 +502,7 @@ it("retains contact and notes drafts after a failed save and a reconnect refresh
         : undefined,
   });
   await render();
-  await click("Editar contacto y notas");
+  await click("Editar contacto, canal y notas");
   await fill("fullName", "Ana María Pérez");
   await fill("phone", "999333444");
   await fill("email", "nuevo@example.com");
@@ -698,7 +698,7 @@ it("validates and saves only contact changes without replacing guests or notes",
       writes.length === 1 ? Response.json({ error: "invalid email" }, { status: 400 }) : undefined,
   });
   await render();
-  await click("Editar contacto y notas");
+  await click("Editar contacto, canal y notas");
   assert.equal(popup()!.querySelector('[name="documentType"]') !== null, false);
   assert.equal(popup()!.querySelector('[name="documentNumber"]') !== null, false);
   assert.equal(nationalityFlag(), null);
@@ -742,7 +742,7 @@ it("validates and saves only contact changes without replacing guests or notes",
 it("saves notes without overwriting an untouched contact changed elsewhere", async () => {
   mockApi();
   await render();
-  await click("Editar contacto y notas");
+  await click("Editar contacto, canal y notas");
   await fill("notes", "Llegada nocturna");
   saved = { ...saved, guest: { ...saved.guest, fullName: "Cambio desde otra pantalla" } };
   await submit();
@@ -2037,6 +2037,7 @@ it("reads an Unfulfilled reservation as Cancelada with nothing to do but return 
   saved = {
     ...saved,
     status: "unfulfilled",
+    channel: "online",
     subtotalCents: 0,
     totalCents: 0,
     paidCents: 25000,
@@ -2048,7 +2049,7 @@ it("reads an Unfulfilled reservation as Cancelada with nothing to do but return 
   };
   mockApi();
   await render();
-  assert.match(text(header()), /Reserva # TEST0001 Cancelada Ana Pérez/);
+  assert.match(text(header()), /Reserva # TEST0001 Cancelada Canal: Web Ana Pérez/);
   assert.equal(
     text(page.container.querySelector('[role="alert"]')!),
     "Reserva cancelada No había disponibilidad cuando se completó el pago en línea.",

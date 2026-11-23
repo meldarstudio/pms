@@ -29,6 +29,7 @@ afterEach(() => {
 async function paidOnline(amountCents = 30000) {
   const response = await db.request("/reservations", "POST", {
     requestId: crypto.randomUUID(),
+    channel: "walk_in",
     checkIn: "2026-10-20",
     checkOut: "2026-10-22",
     guest: { fullName: "Ana Torres", email: "ana@example.com" },
