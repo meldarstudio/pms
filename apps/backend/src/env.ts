@@ -7,6 +7,7 @@ export type Env = {
     propertyCalendar: PropertyCalendar;
     auth: Auth;
     account: SignedInAccount;
+    authSessionId: string;
     checkout: PublicCheckout;
   };
   Bindings: {
@@ -27,6 +28,8 @@ export type Env = {
     CULQI_API_URL?: string;
     RESEND_API_KEY?: string;
     RESEND_API_URL?: string;
+    WEB_PUSH_PUBLIC_KEY?: string;
+    WEB_PUSH_PRIVATE_KEY?: string;
     TURNSTILE_SECRET_KEY?: string;
     TURNSTILE_VERIFY_URL?: string;
   };

@@ -93,6 +93,10 @@ Staff never choose or change Web. Reservations saved before channels were record
 Sin especificar until staff set one.
 _Avoid_: Source, origin, booking site
 
+**New Web reservation alert / Aviso de nueva reserva web**:
+A staff notification that a new Web reservation has been saved as Confirmed.
+_Avoid_: Guest confirmation email, payment alert
+
 **Reservation notes**:
 Staff remarks kept with one reservation only.
 

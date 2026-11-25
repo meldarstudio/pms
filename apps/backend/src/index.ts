@@ -16,6 +16,7 @@ import { housekeepingRoutes } from "./routes/housekeeping";
 import { paymentRoutes } from "./routes/payments";
 import { GUEST_PREFIX, isGuestPath, publicRoutes } from "./routes/public";
 import { ratePlanRoutes } from "./routes/rate-plans";
+import { reservationAlertRoutes } from "./routes/reservation-alerts";
 import { reservationRoutes } from "./routes/reservations";
 import { roomTypeRoutes } from "./routes/room-types";
 import { roomClosureRoutes } from "./routes/room-closures";
@@ -24,6 +25,7 @@ import { setupRoutes } from "./routes/setup";
 import { getDb } from "./db";
 import { purgeAbandonedCheckouts } from "./abandoned-checkouts";
 import { sendConfirmationEmails } from "./confirmation-emails";
+import { sendNewWebReservationAlerts } from "./reservation-alerts";
 import {
   expireAuthentications,
   paymentContext,
@@ -93,6 +95,7 @@ app.route("/availability", availabilityRoutes);
 app.route("/inventory", inventoryRoutes);
 app.route("/guests", guestRoutes);
 app.route("/reservations", reservationRoutes);
+app.route("/reservation-alerts", reservationAlertRoutes);
 app.route("/payments", paymentRoutes);
 app.route("/rate-plans", ratePlanRoutes);
 app.route("/coupons", couponRoutes);
@@ -115,6 +118,7 @@ export default {
         await step("confirmation send", () => sendConfirmationEmails(db, env));
         await step("complaint receipt send", () => sendComplaintEmails(db, env));
         await step("abandoned checkout purge", () => purgeAbandonedCheckouts(db, new Date()));
+        await step("reservation alerts", () => sendNewWebReservationAlerts(db, env));
       })(),
     );
   },

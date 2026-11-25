@@ -372,6 +372,13 @@
       "when": 1795321169888,
       "tag": "0052_drop_one_room_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1795582861955,
+      "tag": "0053_reservation_alerts",
+      "breakpoints": true
     }
   ]
 }

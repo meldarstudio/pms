@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import worker, { app } from "../index";
 import { CULQI_TEST_KEY, fakeCulqi, type FakeCulqi } from "../test-support/culqi";
-import { WEBSITE_ORIGIN } from "../test-support/auth";
+import { PORTAL_ORIGIN, WEBSITE_ORIGIN } from "../test-support/auth";
 import { createTestDb, seedRooms, seedRoomType, type TestDb } from "../test-support/d1";
 import {
   externalServices,
@@ -10,6 +10,7 @@ import {
   TURNSTILE_TEST_SECRET,
   type FakeTurnstile,
 } from "../test-support/turnstile";
+import { webPushFixture } from "../test-support/web-push";
 
 type GuestPayment = {
   state: string;
@@ -153,6 +154,79 @@ async function runScheduled() {
   } as unknown as ExecutionContext);
   await Promise.all(scheduled);
 }
+
+async function watchReservationAlerts() {
+  const receiver = webPushFixture();
+  Object.assign(db.env, receiver.configuration);
+  const firstDevice = {
+    deviceId: "a4abdc3d-eaaa-4f84-8c61-ccebb7cceee3",
+    endpoint: "https://web.push.apple.com/test-subscription",
+  };
+  const secondDevice = {
+    deviceId: "3cae8249-41c3-4b87-859a-5f7e142b34e1",
+    endpoint: "https://fcm.googleapis.com/fcm/send/test-subscription",
+  };
+  const deliveries: { endpoint: string; payload: unknown }[] = [];
+  const otherServices = externalServices({ culqi, turnstile });
+  vi.stubGlobal("fetch", (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const endpoint = input instanceof Request ? input.url : String(input);
+    if (endpoint !== firstDevice.endpoint && endpoint !== secondDevice.endpoint)
+      return otherServices(input, init);
+    expect(new Headers(init?.headers).get("Content-Encoding")).toBe("aes128gcm");
+    deliveries.push({ endpoint, payload: await receiver.read(init?.body) });
+    return new Response(null, { status: 201 });
+  }) as typeof fetch);
+
+  for (const device of [firstDevice, secondDevice]) {
+    expect(
+      (await db.request("/reservation-alerts", "PUT", { ...device, keys: receiver.keys })).status,
+    ).toBe(200);
+  }
+  return { deliveries, firstDevice, secondDevice };
+}
+
+it("sends one private push per opted-in device for a confirmed Web reservation", async () => {
+  const { deliveries, firstDevice, secondDevice } = await watchReservationAlerts();
+  const checkout = await acceptedCheckout();
+  await runScheduled();
+  expect(deliveries).toEqual([]);
+  const payment = await paid(checkout);
+  expect(payment.reservation?.code).toBeDefined();
+  await status(checkout.token);
+  await Promise.all([runScheduled(), runScheduled()]);
+  await runScheduled();
+
+  const firstPayload = deliveries[0]?.payload as
+    | { notification?: { navigate?: string } }
+    | undefined;
+  const reservationId = firstPayload?.notification?.navigate?.split("/").at(-1);
+  expect(reservationId).toEqual(expect.any(String));
+  const payload = {
+    web_push: 8030,
+    notification: {
+      title: "Nueva reserva web",
+      body: expect.stringMatching(/^Llegada: .*20.*oct.*2026/i),
+      navigate: `${PORTAL_ORIGIN}/reservations/${reservationId}`,
+      icon: `${PORTAL_ORIGIN}/icons/icon-192.png`,
+      lang: "es-PE",
+      tag: `new-web-reservation:${reservationId}`,
+    },
+  };
+  expect(deliveries).toHaveLength(2);
+  expect(deliveries).toEqual(
+    expect.arrayContaining([
+      { endpoint: firstDevice.endpoint, payload },
+      { endpoint: secondDevice.endpoint, payload },
+    ]),
+  );
+  const reservation = await db.request(`/reservations/${reservationId}`);
+  expect(reservation.status).toBe(200);
+  expect(await reservation.json()).toMatchObject({
+    code: payment.reservation?.code,
+    channel: "online",
+    status: "confirmed",
+  });
+});
 
 function failingLimiters() {
   const consumed: string[] = [];
@@ -398,6 +472,7 @@ describe("payment outcomes", () => {
   });
 
   it("keeps a charge for a room staff saved meanwhile as Unfulfilled with the money due back", async () => {
+    const { deliveries } = await watchReservationAlerts();
     const checkout = await acceptedCheckout();
     culqi.next("POST /charges", "lose");
     await paid(checkout);
@@ -432,6 +507,8 @@ describe("payment outcomes", () => {
     }[];
     expect(refundDue.map((row) => row.status)).toEqual(["unfulfilled"]);
     expect(rows("SELECT count(*) AS n FROM refunds")).toEqual([{ n: 0 }]);
+    await runScheduled();
+    expect(deliveries).toEqual([]);
   });
 
   it("saves a charge as Unfulfilled for the whole stay when one of its two rooms was taken meanwhile", async () => {

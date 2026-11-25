@@ -67,6 +67,12 @@ const messages: Record<string, string> = {
     "El canal de una reserva hecha en la web no se puede cambiar.",
   "online payments are paused":
     "Los pagos en línea están en pausa. La reserva en curso se conserva; inténtalo más tarde o contacta al hotel.",
+  "invalid notification device": "No se pudo identificar este dispositivo para los avisos.",
+  "invalid notification origin": "Abre el portal autorizado para activar los avisos.",
+  "invalid push endpoint": "El servicio de notificaciones de este navegador no es compatible.",
+  "invalid push key": "No se pudo validar la configuración de notificaciones del navegador.",
+  "notification device already registered": "Este dispositivo ya está registrado para avisos.",
+  "reservation alerts are not configured": "Los avisos de reservas aún no están disponibles.",
   "too many payment attempts":
     "Demasiados intentos de pago. Espera un minuto e inténtalo de nuevo.",
   "payment security check failed": "No se pudo completar la verificación de seguridad del pago.",

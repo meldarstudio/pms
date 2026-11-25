@@ -20,6 +20,8 @@ const localBindingNames = [
   "TURNSTILE_VERIFY_URL",
   "RESEND_API_KEY",
   "RESEND_API_URL",
+  "WEB_PUSH_PUBLIC_KEY",
+  "WEB_PUSH_PRIVATE_KEY",
 ];
 
 function localBindingOverrides(mode: string) {

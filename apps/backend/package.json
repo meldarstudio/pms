@@ -16,6 +16,7 @@
     "auth:secret": "node scripts/session-secret.mjs"
   },
   "dependencies": {
+    "@block65/webcrypto-web-push": "^2.0.0",
     "@hono/zod-validator": "^0.9.1",
     "@pms/shared": "workspace:*",
     "better-auth": "1.7.13",

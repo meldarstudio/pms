@@ -16,6 +16,7 @@ import { loadRoomTypes, occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
 import { ratePlans, termColumns } from "./lib/rate-plans";
 import { reservationAccessValues } from "./reservation-access";
+import { queueNewWebReservationAlert } from "./reservation-alerts";
 import type { OnlineArrivalCalendar } from "./property-calendar";
 import { acceptPhone, requireNewOnlineArrival, requireStay } from "./rules";
 import { lineWrites } from "./workflow";
@@ -166,6 +167,9 @@ export async function saveQuote(
       ),
       ...access,
       ...confirmation,
+      ...(status === "confirmed" && options.publicCheckoutId
+        ? [queueNewWebReservationAlert(db, id, quote.checkIn, now)]
+        : []),
     ]);
   } catch (error) {
     const saved = await savedReservation(db, quoteId);

@@ -41,6 +41,8 @@ export function rethrowConflict(err: unknown): never {
     throw new HttpError(404, "room not found");
   if (text.includes("reservation_requests.id"))
     throw new HttpError(409, "request ID reused with a different payload");
+  if (text.includes("reservation_alert_devices.endpoint"))
+    throw new HttpError(409, "notification device already registered");
   if (text.includes("invalid room assignment"))
     throw new HttpError(409, "room is a different type");
   if (text.includes("invalid occupancy"))

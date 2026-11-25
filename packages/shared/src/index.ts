@@ -4,6 +4,23 @@ export { normalizePhone, phoneErrors } from "./phone";
 
 export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD");
 
+const pushDeviceId = z.uuid({ version: "v4", error: "invalid notification device" });
+export const reservationAlertSettingsSchema = z.object({ deviceId: pushDeviceId.optional() });
+export const reservationAlertDeviceSchema = z.object({ deviceId: pushDeviceId });
+export const reservationAlertSubscriptionSchema = reservationAlertDeviceSchema.extend({
+  endpoint: z.url({ error: "invalid push endpoint" }).max(2048, "invalid push endpoint"),
+  keys: z.object({
+    p256dh: z.string().regex(/^B[A-Za-z0-9_-]{86}$/, "invalid push key"),
+    auth: z.string().regex(/^[A-Za-z0-9_-]{22}$/, "invalid push key"),
+  }),
+});
+export const logoutSchema = z.object({ pushDeviceId: pushDeviceId.optional() });
+
+export type ReservationAlertSubscriptionRequest = z.input<
+  typeof reservationAlertSubscriptionSchema
+>;
+export type LogoutRequest = z.input<typeof logoutSchema>;
+
 const text = (max: number) => z.string().trim().min(1).max(max);
 const EMAIL_ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const requiredText = (max: number, message: string) =>
