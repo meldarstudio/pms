@@ -15,3 +15,6 @@ TURNSTILE_SECRET_KEY=
 # Optional. Unset keeps confirmation emails and complaint receipts pending. RESEND_API_URL is ignored unless it is a loopback address.
 RESEND_API_KEY=
 RESEND_API_URL=
+# Optional matching VAPID P-256 keys in base64url form. Web push is unavailable without both.
+WEB_PUSH_PUBLIC_KEY=
+WEB_PUSH_PRIVATE_KEY=

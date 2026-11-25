@@ -1,10 +1,12 @@
-import { loginSchema } from "@pms/shared";
+import { loginSchema, logoutSchema } from "@pms/shared";
 import { APIError } from "better-auth/api";
 import { Hono, type Context } from "hono";
 import type { SignedInAccount } from "../auth";
+import { getDb } from "../db";
 import type { Env } from "../env";
 import { HttpError, validate } from "../http";
 import { limitBySourceIp } from "../rate-limit";
+import { disableReservationAlerts } from "../reservation-alert-devices";
 import { authConfigured, forwardCookies, toAccount } from "../session";
 
 export const authRoutes = new Hono<Env>();
@@ -33,11 +35,13 @@ authRoutes.post(
   },
 );
 
-authRoutes.post("/logout", async (c) => {
+authRoutes.post("/logout", validate("json", logoutSchema), async (c) => {
+  const { pushDeviceId } = c.req.valid("json");
   const { headers } = await c.var.auth.api.signOut({
     headers: c.req.raw.headers,
     returnHeaders: true,
   });
+  if (pushDeviceId) await disableReservationAlerts(getDb(c.env.DB), c.var.account.id, pushDeviceId);
   forwardCookies(c, headers);
   return c.json({ ok: true });
 });

@@ -1,5 +1,13 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  check,
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 import type { CheckoutLanguage, RoomRequest, StaffReservationChannel } from "@pms/shared";
 import type { PricedNight } from "../lib/pricing";
 import type { RatePlanCode, RatePlanTerms } from "../lib/rate-plans";
@@ -27,6 +35,42 @@ export const operationControls = sqliteTable(
     updatedBy: text("updated_by").notNull(),
   },
   (table) => [check("operation_controls_singleton", sql`${table.id} = 1`)],
+);
+
+export const reservationAlertDevices = sqliteTable(
+  "reservation_alert_devices",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    portalOrigin: text("portal_origin").notNull(),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+  },
+  (table) => [index("reservation_alert_devices_account").on(table.accountId)],
+);
+
+export const reservationAlertDeliveries = sqliteTable(
+  "reservation_alert_deliveries",
+  {
+    reservationId: text("reservation_id")
+      .notNull()
+      .references(() => reservations.id, { onDelete: "cascade" }),
+    deviceId: text("device_id")
+      .notNull()
+      .references(() => reservationAlertDevices.id, { onDelete: "cascade" }),
+    checkIn: text("check_in").notNull(),
+    nextAttemptAt: text("next_attempt_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.reservationId, table.deviceId] }),
+    index("reservation_alert_deliveries_device").on(table.deviceId),
+    index("reservation_alert_deliveries_due").on(table.nextAttemptAt),
+    index("reservation_alert_deliveries_expiry").on(table.expiresAt),
+  ],
 );
 
 export const roomTypes = sqliteTable("room_types", {

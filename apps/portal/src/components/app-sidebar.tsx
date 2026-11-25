@@ -3,6 +3,7 @@ import { useState, type MouseEvent } from "react";
 import {
   ArrowLeftIcon,
   BedDoubleIcon,
+  BellIcon,
   BroomIcon,
   CalendarDaysIcon,
   ClipboardListIcon,
@@ -16,6 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { HotelLogo } from "@/components/hotel-logo";
+import { ReservationAlertSettings } from "@/components/reservation-alert-settings";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -236,6 +238,7 @@ export function AppSidebar() {
 function AccountMenu({ username, role }: Pick<Session, "username" | "role">) {
   const { isMobile } = useSidebar();
   const logout = useLogout();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const roleTitle = accountRoleTitles[role];
   return (
     <SidebarMenu>
@@ -261,6 +264,10 @@ function AccountMenu({ username, role }: Pick<Session, "username" | "role">) {
             <EllipsisVerticalIcon />
           </DropdownMenuTrigger>
           <DropdownMenuContent side={isMobile ? "top" : "right"} align="end">
+            <DropdownMenuItem onClick={() => setNotificationsOpen(true)}>
+              <BellIcon />
+              Notificaciones
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
                 logout.mutate(undefined, {
@@ -273,6 +280,9 @@ function AccountMenu({ username, role }: Pick<Session, "username" | "role">) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {notificationsOpen && (
+          <ReservationAlertSettings onClose={() => setNotificationsOpen(false)} />
+        )}
       </SidebarMenuItem>
     </SidebarMenu>
   );

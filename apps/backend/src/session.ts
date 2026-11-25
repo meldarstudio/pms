@@ -41,6 +41,7 @@ export const requireSession = createMiddleware<Env>(async (c, next) => {
   if (!response) throw new HttpError(401, "unauthorized");
   forwardCookies(c, headers);
   c.set("account", toAccount(response.user));
+  c.set("authSessionId", response.session.id);
   return next();
 });
 

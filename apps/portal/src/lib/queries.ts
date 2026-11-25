@@ -9,7 +9,13 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 
+import type { ReservationAlertSubscriptionRequest } from "@pms/shared";
 import { addDateLabelDays } from "@/lib/dates";
+import {
+  clearBrowserReservationAlerts,
+  loadReservationAlertBrowser,
+  reservationAlertDeviceId,
+} from "@/lib/reservation-alert-device";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import {
   importComplaintBackup,
@@ -34,6 +40,9 @@ import {
   getInventory,
   getReservation,
   getReservationConfirmation,
+  getReservationAlertSettings,
+  enableReservationAlerts,
+  disableReservationAlerts,
   requestConfirmationResend,
   type ConfirmationResendRequest,
   getSession,
@@ -109,8 +118,46 @@ export function useLogin() {
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: logout,
+    mutationFn: async () => {
+      const pushDeviceId = reservationAlertDeviceId();
+      const result = await logout(pushDeviceId ? { pushDeviceId } : undefined);
+      void clearBrowserReservationAlerts().catch(() => {});
+      return result;
+    },
     onSuccess: () => setSignedOut(queryClient),
+  });
+}
+
+const reservationAlertSettingsKey = ["reservation-alert-settings"] as const;
+const reservationAlertBrowserKey = ["reservation-alert-browser"] as const;
+
+export function useReservationAlertSettings(deviceId: string | null) {
+  return useQuery({
+    queryKey: [...reservationAlertSettingsKey, deviceId],
+    queryFn: ({ signal }) => getReservationAlertSettings(deviceId, signal),
+    retry: false,
+  });
+}
+
+export function useReservationAlertBrowser() {
+  return useQuery({ queryKey: reservationAlertBrowserKey, queryFn: loadReservationAlertBrowser });
+}
+
+export function useSetReservationAlertDevice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: ReservationAlertSubscriptionRequest | string) => {
+      if (typeof input !== "string") return enableReservationAlerts(input);
+      const result = await disableReservationAlerts(input);
+      await clearBrowserReservationAlerts().catch(() => {});
+      return result;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: reservationAlertSettingsKey }),
+        queryClient.invalidateQueries({ queryKey: reservationAlertBrowserKey }),
+      ]);
+    },
   });
 }
 

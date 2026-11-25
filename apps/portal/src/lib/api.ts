@@ -1,6 +1,7 @@
 import type {
   HousekeepingMarksRequest,
   LoginRequest,
+  LogoutRequest,
   OwnPasswordRequest,
   PatchRoomClosureRequest,
   PatchRoomRequest,
@@ -8,6 +9,7 @@ import type {
   PropertySetupRequest as PropertySetupInput,
   ConfirmationResendRequest,
   PublicPaymentAdmissionRequest,
+  ReservationAlertSubscriptionRequest,
   RateWriteRequest,
   RoomClosureRequest,
   WorkflowActionRequest as WorkflowAction,
@@ -452,8 +454,23 @@ export async function login(input: LoginRequest) {
   return calendarSession(await writeJson<Session>("/login", "POST", input));
 }
 
-export function logout() {
-  return writeJson<{ ok: true }>("/logout", "POST");
+export function logout(input?: LogoutRequest) {
+  return writeJson<{ ok: true }>("/logout", "POST", input);
+}
+
+export type ReservationAlertSettings = { publicKey: string | null; enabled: boolean };
+
+export function getReservationAlertSettings(deviceId: string | null, signal?: AbortSignal) {
+  const query = deviceId ? `?${new URLSearchParams({ deviceId })}` : "";
+  return getJson<ReservationAlertSettings>(`/reservation-alerts${query}`, signal);
+}
+
+export function enableReservationAlerts(input: ReservationAlertSubscriptionRequest) {
+  return writeJson<{ enabled: true }>("/reservation-alerts", "PUT", input);
+}
+
+export function disableReservationAlerts(deviceId: string) {
+  return writeJson<{ enabled: false }>("/reservation-alerts", "DELETE", { deviceId });
 }
 
 export function listAccounts(signal?: AbortSignal) {
