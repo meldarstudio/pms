@@ -83,6 +83,12 @@ export const roomsBookingKeys = [
   "rooms.hotel.title",
   "rooms.card.sleeps",
   "rooms.card.wifi",
+  "rooms.referenceRate",
+  "rooms.referenceRateBasis",
+  "rooms.referenceRateMissing",
+  "rooms.referenceRateUnavailable",
+  "rooms.searchGuide",
+  "rooms.liveOffers",
   "rooms.details.open",
   "rooms.details.close",
 ] as const satisfies readonly (keyof (typeof ui)["es"])[];

@@ -52,11 +52,12 @@
   import { fill } from "@/lib/reservation/format";
   import { newRoomRequest, type StaySearch } from "@/lib/reservation/search";
 
-  let { action, onSearch, lang, copy, roomIds = [] }: StaySearchProps = $props();
+  let { action, onSearch, lang, copy, roomIds = [], guide, initial }: StaySearchProps = $props();
   const datePopup = createPopoverController<DateField>();
   const guestPopup = createPopoverController();
   const wide = new MediaQuery(wideScreen, true);
-  let search = $state({ ...initialSearch });
+  const openedSearch = initial;
+  let search = $state(openedSearch ? shownSearch(openedSearch) : { ...initialSearch });
   let ready = $state(false);
   let picker = $state<DatePicker>();
   let month = $state<string>();
@@ -174,7 +175,7 @@
               <rect x="2" y="3.5" width="12" height="10.5" /><path d="M2 6.5h12M5 2v3M11 2v3" />
             </svg>
           </PopoverTrigger>
-          <input type="hidden" name={field} value={search[field]} />
+
           {#if error}<p id={`${id}-error`} class="lp-error">{error}</p>{/if}
         </div>
       {/each}
@@ -344,13 +345,39 @@
       </Popover>
     </div>
     <button type="submit" class="lp-submit">{copy.submit}</button>
-    {#each guestFields as guest (guest.name)}
-      <input
-        type="hidden"
-        name={guest.name}
-        value={search.requests.map((request) => request[guest.name]).join(",")}
-      />
-    {/each}
   </fieldset>
+  <div class="stay-search-parameters">
+    {#each dateFields as field (field)}
+      <label>
+        {field}
+        <input type="date" name={field} bind:value={search[field]} />
+      </label>
+    {/each}
+    {#each guestFields as guest (guest.name)}
+      <label>
+        {guest.name}
+        <input
+          type="text"
+          name={guest.name}
+          inputmode="numeric"
+          autocomplete="off"
+          value={search.requests.map((request) => request[guest.name]).join(",")}
+          oninput={(event) => {
+            const parts = event.currentTarget.value.split(",");
+            const length =
+              guest.name === "adults" ? Math.max(parts.length, 1) : search.requests.length;
+            search.requests = Array.from({ length }, (_, index) => {
+              const current = search.requests[index] ?? newRoomRequest();
+              const parsed = Number(parts[index]);
+              const fallback = guest.name === "adults" ? 1 : 0;
+              const amount = Number.isInteger(parsed) && parsed >= guest.min ? parsed : fallback;
+              return { ...current, [guest.name]: amount };
+            });
+          }}
+        />
+      </label>
+    {/each}
+    {#if guide}<p>{guide}</p>{/if}
+  </div>
   <p class="sr-only" role="status" aria-atomic="true">{announcement}</p>
 </form>

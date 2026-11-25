@@ -37,7 +37,8 @@
     onPrevious,
     onChangeRoom,
     onPlan,
-  }: Omit<RoomsBookingProps, "apiBase"> & {
+    referenceAmounts,
+  }: Omit<RoomsBookingProps, "apiBase" | "action" | "initialStay" | "settled" | "referenceRates"> & {
     phase: Phase;
     draft: StaySearch | null;
     offersFor: OffersFor;
@@ -136,7 +137,14 @@
             {@const floor = phase.kind === "found" ? lowestOffer(offers) : undefined}
             {@const marked = several && current?.room === item.id}
             <li>
-              <RoomCard room={item} {text} {details} {offers} {marked}>
+              <RoomCard
+                room={item}
+                {text}
+                {details}
+                {offers}
+                {marked}
+                referenceRate={referenceAmounts[item.id]}
+              >
                 <div class="text-right">
                   {#if phase.kind === "idle"}
                     <button type="button" class={`w-full ${secondary}`} onclick={onChooseDates}>

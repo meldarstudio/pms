@@ -1,14 +1,18 @@
 # Website
 
-Static Astro site for Hotel Manantial in Churín, Peru. Cloudflare serves `dist/`.
+Astro site for Hotel Manantial in Churín, Peru. The Spanish and English room pages render
+on demand; every other page is prerendered. Cloudflare serves the Worker and its static assets.
 `PUBLIC_PMS_API_URL` is required; `.env.development` supplies the local backend URL, and the
 release workflow supplies the production URL.
 
 ## Booking flow
 
 - Choose is `/habitaciones/`, one Svelte island (`src/components/rooms/RoomsBooking.svelte`).
-  Rooms are prerendered; live offers come from the PMS `/public` API at runtime, never in the HTML.
-  `src/lib/rooms.ts` links each room to a PMS room-type ID.
+  The initial HTML includes each published room type's reference rate and, when the URL has a
+  stay, that stay's live offers. The island reuses a settled offer read instead of requesting it
+  again. `src/lib/rooms.ts` links each room to a PMS room-type ID. The server-side read forwards
+  `cf-connecting-ip` so the guest offer limit stays the visitor's; if Cloudflare overwrites that
+  header on the API subrequest, do not remove the limit.
 - Review is `/reservar/revisar/`, one Svelte island (`src/components/reservation/review/Review.svelte`).
   Its checkout and payment decisions live in the pure `src/lib/reservation/checkout-flow.ts`
   (`next(state, event)` returns the next state and effects); `checkout-runner.ts` performs the
@@ -52,8 +56,8 @@ Keep `astro-check` and `svelte-check` isolated on TypeScript 6 through the works
 package extensions. They need the programmatic API unavailable in the workspace's
 TypeScript 7. Run `astro-check` directly because Astro's wrapper rejects TypeScript 7.
 
-For an authorized deployment, pass `./dist` to `cf deploy`; without the directory,
-`cf` would try to build the Astro project itself.
+For an authorized deployment, run the website `deploy` script. It builds the Worker that
+serves the two room routes and the static assets. Do not deploy `./dist` as assets only.
 
 ## Routes and translations
 

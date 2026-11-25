@@ -40,6 +40,11 @@
     details,
     text,
     searchCopy,
+    action,
+    initialStay = null,
+    settled = null,
+    referenceRates,
+    referenceAmounts,
   }: RoomsBookingProps = $props();
 
   const backendProblems: Record<string, RoomsBookingKey> = {
@@ -52,6 +57,24 @@
   const unavailableStates = ["sold_out", "too_many_guests", "offline"] as const;
   type HistoryWrite = "push" | "replace" | "none";
   type PendingFocus = { kind: "rates" } | { kind: "step" } | null;
+
+  function phaseFrom(search: StaySearch, outcome: SearchOutcome): Phase {
+    if (outcome.kind === "found") return { kind: "found", search, result: outcome.result };
+    if (outcome.kind === "invalid") {
+      return {
+        kind: "problem",
+        title: "reservation.choose.invalid.title",
+        body: backendProblems[outcome.error] ?? "reservation.problem.invalidSearch",
+        retry: false,
+      };
+    }
+    return {
+      kind: "problem",
+      title: "reservation.choose.unavailable.title",
+      body: "reservation.choose.unavailable.body",
+      retry: true,
+    };
+  }
 
   let address = $state.raw<StaySearch | null>(null);
   let phase = $state.raw<Phase>({ kind: "idle" });
@@ -220,7 +243,12 @@
   onMount(() => {
     const island = startIsland(PmsClient.layer(apiBase));
     offerSearch = island.latest();
-    search(resumeSearch(new URLSearchParams(location.search), roomIds));
+    const next = resumeSearch(new URLSearchParams(location.search), roomIds);
+    if (settled && initialStay && sameStay(initialStay, next)) {
+      address = next;
+      phase = phaseFrom(next, settled);
+      stayForm?.keepDraft(next);
+    } else search(next);
     void tick().then(() => {
       const booking = root.closest("[data-rooms-booking]");
       booking?.removeAttribute("data-resume-rates");
@@ -330,6 +358,9 @@
         bind:this={stayForm}
         {lang}
         {roomIds}
+        {action}
+        guide={text["rooms.searchGuide"]}
+        initial={initialStay ?? undefined}
         copy={searchCopy}
         onSearch={(next) => search(address ? editParty(address, next) : next)}
       />
@@ -341,6 +372,9 @@
     >
       {status}
     </p>
+    {#if referenceRates.unavailable}
+      <p class="mt-4 text-stone-700">{text["rooms.referenceRateUnavailable"]}</p>
+    {/if}
     {#if phase.kind === "problem"}
       <div
         bind:this={problemPanel}
@@ -365,9 +399,9 @@
       <section
         bind:this={noticePanel}
         class={`mt-6 ${belowHeader} border-l-4 border-amber-600 bg-white p-4 text-stone-800`}
-        aria-labelledby="rooms-notice"
+        aria-labelledby="rooms-choice-notice"
       >
-        <p id="rooms-notice" class="font-semibold">{notice.title}</p>
+        <p id="rooms-choice-notice" class="font-semibold">{notice.title}</p>
         {#if notice.reasons.length}
           <ul class="mt-2 list-disc pl-5">
             {#each notice.reasons as reason (reason)}<li>{reason}</li>{/each}
@@ -387,6 +421,7 @@
   {phase}
   draft={address}
   {offersFor}
+  {referenceAmounts}
   onChooseDates={chooseDates}
   onOpenRoom={openRoom}
   onContinue={continueRoom}

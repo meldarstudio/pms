@@ -21,6 +21,7 @@ export type Env = {
     PUBLISHED_ROOM_TYPE_IDS: string;
     LOGIN_LIMITER: RateLimit;
     SEARCH_LIMITER: RateLimit;
+    REFERENCE_RATE_LIMITER: RateLimit;
     QUOTE_LIMITER: RateLimit;
     PAYMENT_IP_LIMITER: RateLimit;
     PAYMENT_CHECKOUT_LIMITER: RateLimit;

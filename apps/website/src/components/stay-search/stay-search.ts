@@ -19,10 +19,15 @@ import {
 } from "@/lib/reservation/search";
 import { resumeSearch, storeSearch } from "@/lib/reservation/stay-search-storage";
 
-export type StaySearchProps = { lang: Lang; copy: StaySearchCopy; roomIds?: readonly string[] } & (
-  | { action: string; onSearch?: never }
-  | { action?: never; onSearch: (search: StaySearch) => void }
-);
+export type StaySearchProps = {
+  lang: Lang;
+  copy: StaySearchCopy;
+  roomIds?: readonly string[];
+  action?: string;
+  guide?: string;
+  initial?: StaySearch;
+  onSearch?: (search: StaySearch) => void;
+};
 export type DateField = "checkIn" | "checkOut";
 export type DatePicker = Omit<ReturnType<typeof openDatePicker>, "month">;
 

@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const site = "https://www.hotelmanantialchurin.com";
-const distDir = fileURLToPath(new URL("../dist/", import.meta.url));
+const distDir = fileURLToPath(
+  new URL("../.cloudflare/output/v1/workers/default/assets/", import.meta.url),
+);
 const internalOnly =
   process.argv.includes("--internal-only") || process.env.LINKS_INTERNAL_ONLY === "1";
 const timeoutMs = 10_000;
@@ -258,13 +260,13 @@ for (const [file, { links, ids: ownIds }] of pages) {
     internalCount++;
     const resolved = await resolveLikeCloudflareAutoTrailingSlash(url.pathname);
     if (!resolved) {
-      fail(raw, `no file in dist/ for ${url.pathname}`);
+      fail(raw, `no built file for ${url.pathname}`);
       continue;
     }
     const target = resolved.file;
     if (resolved.redirect) {
       const servedAs = path.relative(distDir, target).split(path.sep).join("/");
-      warn(raw, `only resolves through a host redirect (serves dist/${servedAs})`);
+      warn(raw, `only resolves through a host redirect (serves ${servedAs})`);
     }
     const fragment = decodeURIComponent(url.hash.slice(1));
     if (fragment && fragment !== "top") {

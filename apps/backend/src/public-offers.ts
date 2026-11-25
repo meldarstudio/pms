@@ -22,6 +22,15 @@ export function publishedRoomTypeIds(setting: string | undefined): string[] {
 
 const PLAN_ORDER: RatePlanCode[] = ["flexible", "non_refundable"];
 
+export async function referenceRates(db: Db, published: string[]) {
+  const loaded = await loadRoomTypes(db, published);
+  const byId = new Map(loaded.map((type) => [type.id, type]));
+  return published.flatMap((id) => {
+    const type = byId.get(id);
+    return type ? [{ id: type.id, baseRateCents: type.baseRateCents }] : [];
+  });
+}
+
 export async function searchOffers(
   db: Db,
   search: OfferSearch,

@@ -38,7 +38,8 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
   await expect(steps.getByRole("button")).toHaveCount(0);
   await expect(steps.getByRole("link")).toHaveCount(0);
   const king = room(page, "Suite Matrimonial");
-  await expect(page.getByRole("main")).not.toContainText(/S\/\s\d/);
+  await expect(king.getByText("Tarifa de referencia")).toBeVisible();
+  await expect(king.getByText("Desde")).toHaveCount(0);
   await king.getByRole("button", { name: "Elegir fechas" }).click();
   await pickRangeDate(page, stay.checkIn);
   await pickRangeDate(page, stay.checkOut);
@@ -159,7 +160,7 @@ test("changing dates hides the old prices and disables Ver tarifas until new pri
     await expect(page.locator('[aria-busy="true"]')).toBeVisible();
     await expect(king.getByRole("heading", { name: "Suite Matrimonial" })).toBeVisible();
     await expect(king.getByRole("button", { name: /Ver tarifas/ })).toBeDisabled();
-    await expect(king).not.toContainText(/S\/\s\d/);
+    await expect(king.locator(".text-3xl")).not.toContainText(/S\/\s\d/);
   } finally {
     release();
   }
@@ -201,7 +202,7 @@ test("sold-out rooms are shown as sold out, not as a service failure", async ({ 
     const double = room(page, "Doble Premium");
     await expect(double).not.toContainText("Agotada");
     await expect(double.getByRole("button", { name: "Ver tarifas" })).toBeDisabled();
-    await expect(double).not.toContainText(/S\/\s\d/);
+    await expect(double.locator(".text-3xl")).not.toContainText(/S\/\s\d/);
   } finally {
     release();
   }

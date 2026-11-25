@@ -51,6 +51,13 @@ export default defineConfig({
           period: 60,
         },
       }),
+      REFERENCE_RATE_LIMITER: bindings.rateLimit({
+        namespace: "1006",
+        simple: {
+          limit: 60,
+          period: 60,
+        },
+      }),
       QUOTE_LIMITER: bindings.rateLimit({
         namespace: "1003",
         simple: {

@@ -21,7 +21,7 @@ import {
 import { requirePublicPaymentAdmission } from "../operation-controls";
 import { paymentContext } from "../payment-attempts";
 import { onlineArrivalCalendar } from "../property-calendar";
-import { publishedRoomTypeIds, searchOffers } from "../public-offers";
+import { publishedRoomTypeIds, referenceRates, searchOffers } from "../public-offers";
 import {
   checkoutReservationAccess,
   reservationForAccessToken,
@@ -74,6 +74,15 @@ const requireCheckout = createMiddleware<Env>(async (c, next) => {
   );
   return next();
 });
+
+publicRoutes.get(
+  "/reference-rates",
+  limitBySourceIp("REFERENCE_RATE_LIMITER", "too many searches"),
+  async (c) => {
+    const roomTypes = await referenceRates(getDb(c.env.DB), guestContext(c).published);
+    return c.json({ currency: currency(c), roomTypes });
+  },
+);
 
 publicRoutes.get(
   "/offers",

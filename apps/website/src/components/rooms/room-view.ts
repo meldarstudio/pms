@@ -1,6 +1,6 @@
 import type { Lang } from "@/i18n/utils";
 import type { StayDetailId } from "@/lib/included";
-import type { OfferSearchResult } from "@/lib/reservation/offers";
+import type { OfferSearchResult, SearchOutcome } from "@/lib/reservation/offers";
 import type { StaySearch } from "@/lib/reservation/search";
 import type { StaySearchCopy } from "@/lib/reservation/stay-copy";
 import type { RoomId } from "@/lib/rooms";
@@ -29,6 +29,12 @@ export type RoomView = {
 export type StayDetail = { id: StayDetailId; label: string };
 export type StayDetails = { inRoom: StayDetail[]; hotel: StayDetail[] };
 
+export type ReferenceRateView = {
+  currency: string;
+  byType: Record<string, number>;
+  unavailable: boolean;
+};
+
 export type RoomsBookingProps = {
   lang: Lang;
   apiBase: string;
@@ -37,6 +43,11 @@ export type RoomsBookingProps = {
   details: StayDetails;
   text: RoomsBookingText;
   searchCopy: StaySearchCopy;
+  action: string;
+  initialStay: StaySearch | null;
+  settled: SearchOutcome | null;
+  referenceRates: ReferenceRateView;
+  referenceAmounts: Record<RoomId, string | null>;
 };
 
 export type Phase =
