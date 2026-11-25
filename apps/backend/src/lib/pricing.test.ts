@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 import { priceNights, totalCents } from "./pricing";
-import { ratePlans } from "./rate-plans";
+import { defaultRatePlans } from "./rate-plans";
 
 describe("priceNights", () => {
   const dates = ["2026-12-24", "2026-12-25", "2026-12-26"];
   const overrides = new Map([["2026-12-25", 14000]]);
-  const nonRefundable = ratePlans.non_refundable;
+  const nonRefundable = defaultRatePlans.non_refundable;
 
   it("uses the date's override before the base rate, unadjusted under Flexible", () => {
     const nights = priceNights({
       dates,
       baseRateCents: 10000,
       overrides,
-      terms: ratePlans.flexible,
+      terms: defaultRatePlans.flexible,
     });
     expect(nights).toEqual([
       { date: "2026-12-24", priceCents: 10000, adjustmentCents: 0, discountCents: 0 },

@@ -8,7 +8,7 @@ import { currency, validate } from "../http";
 import { loadRoomTypes, ratesBetween, roomCounts } from "../inventory";
 import { addDays } from "../lib/dates";
 import { inventoryGrid } from "../lib/inventory-grid";
-import { ratePlans } from "../lib/rate-plans";
+import { currentRatePlans } from "../rate-plan-settings";
 import { requireInclusiveRange } from "../rules";
 
 export const inventoryRoutes = new Hono<Env>();
@@ -19,7 +19,7 @@ inventoryRoutes.get("/", validate("query", rateRangeQuerySchema), async (c) => {
   const windowEnd = addDays(to, 1);
   const db = getDb(c.env.DB);
   const types = await loadRoomTypes(db);
-  const [capacity, stays, closures, rates] = await Promise.all([
+  const [capacity, stays, closures, rates, ratePlans] = await Promise.all([
     roomCounts(db),
     db
       .select({
@@ -47,12 +47,13 @@ inventoryRoutes.get("/", validate("query", rateRangeQuerySchema), async (c) => {
       from,
       windowEnd,
     ),
+    currentRatePlans(db),
   ]);
   return c.json({
     from,
     to,
     currency: currency(c),
     ratePlans: Object.values(ratePlans),
-    roomTypes: inventoryGrid(dates, types, capacity, stays, closures, rates),
+    roomTypes: inventoryGrid(dates, types, capacity, stays, closures, rates, ratePlans),
   });
 });

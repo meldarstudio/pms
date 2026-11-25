@@ -24,7 +24,8 @@ import {
 import { HttpError, rethrowConflict } from "./http";
 import { peakOccupied, type GridClosure, type GridStay } from "./lib/inventory-grid";
 import { holdsInventory, inventoryStatuses } from "./lib/statuses";
-import { ratePlans, termColumns } from "./lib/rate-plans";
+import { termColumns } from "./lib/rate-plans";
+import { currentRatePlan } from "./rate-plan-settings";
 import { acceptPhone, requireStay } from "./rules";
 import { confirmationCode } from "./lib/codes";
 import { chunks } from "./lib/chunks";
@@ -339,7 +340,7 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
     id = crypto.randomUUID(),
     guestId = crypto.randomUUID();
   const phone = acceptPhone(input.guest.phone);
-  const terms = ratePlans[input.ratePlan ?? "flexible"];
+  const terms = await currentRatePlan(db, input.ratePlan ?? "flexible");
   const nights = await priceRooms(db, input, input.rooms, terms);
   const lines = input.rooms.map((room, index) => stayLine(id, room, now, nights[index]));
   rejectRoomIssues(await validateRooms(db, lines));
@@ -379,7 +380,7 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
 }
 
 export async function previewCreate(db: Db, input: WorkflowCreatePreview) {
-  const terms = ratePlans[input.ratePlan ?? "flexible"];
+  const terms = await currentRatePlan(db, input.ratePlan ?? "flexible");
   const nights = await priceRooms(db, input, input.rooms, terms);
   const rooms = input.rooms.map((room, index) => ({
     roomTypeId: room.roomTypeId,

@@ -6,6 +6,7 @@ import { AppearanceSettings } from "@/components/appearance-settings";
 import { useConfigurationDraft } from "@/components/configuration-draft";
 import { PageTitle } from "@/components/page-title";
 import { PaymentSettings } from "@/components/payment-settings";
+import { RatePlanSettings, ratePlanSettingsFormId } from "@/components/rate-plan-settings";
 import { RoomTypesSection, type RoomTypeEditorTarget } from "@/components/room-types-section";
 import {
   Breadcrumb,
@@ -22,7 +23,13 @@ export function Configuration({ section }: { section: ConfigurationSection }) {
   const [roomEditor, setRoomEditor] = useState<RoomTypeEditorTarget | null>(null);
   const [account, setAccount] = useState<Account | null>(null);
   const editorOpen = roomEditor !== null || account !== null;
-  const formId = roomEditor ? "property-setup-form" : account ? "account-password-form" : undefined;
+  const formId = roomEditor
+    ? "property-setup-form"
+    : account
+      ? "account-password-form"
+      : section === "rate-plans"
+        ? ratePlanSettingsFormId
+        : undefined;
   const draft = useConfigurationDraft(formId, () => {
     setRoomEditor(null);
     setAccount(null);
@@ -110,6 +117,7 @@ export function Configuration({ section }: { section: ConfigurationSection }) {
           />
         )}
         {section === "appearance" && <AppearanceSettings />}
+        {section === "rate-plans" && <RatePlanSettings {...draft.events} />}
         {section === "payments" && <PaymentSettings />}
         {section === "accounts" && (
           <AccountsSection account={account} onSelect={setAccount} {...draft.events} />

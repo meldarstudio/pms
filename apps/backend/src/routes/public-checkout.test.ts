@@ -440,7 +440,11 @@ describe("accepting the agreement", () => {
   });
 
   it("refuses an expired quote and accepts its refreshed replacement at current prices", async () => {
-    const { token, quote } = await started();
+    const { token, quote } = await started({ ratePlan: "non_refundable" });
+    await db.signIn("owner");
+    expect(
+      (await db.request("/rate-plans/non-refundable", "PUT", { reductionPercent: 20 })).status,
+    ).toBe(200);
     vi.setSystemTime(new Date("2026-10-10T15:10:00Z"));
     db.sqlite.exec(
       "INSERT INTO room_type_rates (id, room_type_id, date, price_cents) VALUES ('rate', 'type-king', '2026-10-20', 15000)",
@@ -455,7 +459,7 @@ describe("accepting the agreement", () => {
     expect(read.quote).toMatchObject({ id: quote.id, expired: true });
     expect(refreshed.status).toBe(201);
     const view = (await refreshed.json()) as CheckoutView;
-    expect(view.quote).toMatchObject({ expired: false, totalCents: 25000 });
+    expect(view.quote).toMatchObject({ expired: false, totalCents: 20000 });
     expect(view.quote.id).not.toBe(quote.id);
     expect(view.acceptance).toBeNull();
     expect(count("checkout_acceptances")).toBe(0);

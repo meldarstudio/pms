@@ -22,6 +22,11 @@ export const configurationSections = [
     title: "Habitaciones",
     description: "Tipos, capacidad y tarifas base del alojamiento.",
   },
+  {
+    id: "rate-plans",
+    title: "Planes tarifarios",
+    description: "Ajustes de precio de los planes del alojamiento.",
+  },
   { id: "appearance", title: "Apariencia", description: "Elige cómo prefieres ver el portal." },
   {
     id: "payments",
@@ -50,7 +55,7 @@ export function canOpenConfigurationSection(
   section: ConfigurationSection,
   role: AccountRole | undefined,
 ) {
-  return (section !== "accounts" && section !== "payments") || role === "owner";
+  return section === "rooms" || section === "appearance" || role === "owner";
 }
 
 export function activeConfigurationSection({ pathname, search }: ParsedLocation) {

@@ -80,6 +80,8 @@ const messages: Record<string, string> = {
     "Esta reserva en curso ya tiene un pago. Revisa su estado antes de pedir otro precio.",
   unauthorized: "Tu sesión terminó. Inicia sesión de nuevo.",
   "owner account required": "Solo la cuenta del propietario puede hacer esto.",
+  "rate reduction must be a whole percentage from 1 to 99":
+    "Ingresa un porcentaje entero del 1 al 99.",
   "account not found": "No se encontró la cuenta. Recarga la página.",
   "password must be at least 12 characters": "La contraseña debe tener al menos 12 caracteres.",
   "password must be at most 128 characters": "La contraseña debe tener como máximo 128 caracteres.",

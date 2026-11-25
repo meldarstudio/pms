@@ -5,7 +5,7 @@ import type { Env } from "../env";
 import { currency, HttpError, validate } from "../http";
 import { addDays } from "../lib/dates";
 import { overridesFor, priceNights, totalCents } from "../lib/pricing";
-import { ratePlans } from "../lib/rate-plans";
+import { defaultRatePlans } from "../lib/rate-plans";
 import { assignableRooms, loadRoomTypes, occupiedCounts, ratesBetween } from "../inventory";
 import { requireStay } from "../rules";
 
@@ -36,7 +36,7 @@ availabilityRoutes.get("/", validate("query", availabilityQuerySchema), async (c
         dates: nights,
         baseRateCents: type.baseRateCents,
         overrides: overridesFor(rates, type.id),
-        terms: ratePlans.flexible,
+        terms: defaultRatePlans.flexible,
       });
       return {
         id: type.id,

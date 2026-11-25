@@ -5,7 +5,7 @@ import { reservations } from "../db/schema";
 import type { presentReservation } from "../present";
 import { atBaseRate, createTestDb, seedRooms, seedRoomType, type TestDb } from "../test-support/d1";
 import { offerAmounts } from "../public-offers";
-import { ratePlans } from "./rate-plans";
+import { defaultRatePlans } from "./rate-plans";
 import {
   balanceCentsSql,
   reservationBill,
@@ -231,20 +231,22 @@ describe("bills before money moves", () => {
         { nights: priced(["2026-10-20", 12000], ["2026-10-21", 15000], ["2026-10-22", 15000]) },
       ],
     };
-    expect(offerAmounts({ ...quote, terms: ratePlans.flexible }, "2026-10-10")).toMatchObject({
+    expect(
+      offerAmounts({ ...quote, terms: defaultRatePlans.flexible }, "2026-10-10"),
+    ).toMatchObject({
       totalCents: 69000,
       requiredInitialPaymentCents: 21000,
       remainingScheduledCents: 48000,
       cancellation: { chargeCents: 21000 },
     });
-    expect(offerAmounts({ ...quote, terms: ratePlans.non_refundable }, "2026-10-10")).toMatchObject(
-      {
-        totalCents: 69000,
-        requiredInitialPaymentCents: 69000,
-        remainingScheduledCents: 0,
-        cancellation: { chargeCents: 69000 },
-      },
-    );
+    expect(
+      offerAmounts({ ...quote, terms: defaultRatePlans.non_refundable }, "2026-10-10"),
+    ).toMatchObject({
+      totalCents: 69000,
+      requiredInitialPaymentCents: 69000,
+      remainingScheduledCents: 0,
+      cancellation: { chargeCents: 69000 },
+    });
   });
 });
 

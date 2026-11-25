@@ -1,6 +1,7 @@
 import type {
   HousekeepingMarksRequest,
   LoginRequest,
+  NonRefundablePriceAdjustmentRequest,
   OwnPasswordRequest,
   PatchRoomClosureRequest,
   PatchRoomRequest,
@@ -241,6 +242,10 @@ export type RatePlanTerms = {
 
 export function listRatePlans(signal?: AbortSignal) {
   return getJson<RatePlanTerms[]>("/rate-plans", signal);
+}
+
+export function updateNonRefundablePriceAdjustment(input: NonRefundablePriceAdjustmentRequest) {
+  return writeJson<RatePlanTerms[]>("/rate-plans/non-refundable", "PUT", input);
 }
 
 export type CancellationWaiver = {

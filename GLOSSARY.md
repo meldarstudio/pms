@@ -248,6 +248,10 @@ A rate plan whose nightly prices follow the ordinary nightly price through a pri
 adjustment, such as Non-refundable, and are never set independently.
 _Avoid_: Independent rate, rate override
 
+**Non-refundable**:
+A derived rate plan with one property-wide percentage reduction from ordinary nightly
+prices across room types and stay dates, for both online and staff reservations.
+
 **Price adjustment**:
 A rate plan's percentage change to ordinary nightly prices.
 _Avoid_: Discount, rate override

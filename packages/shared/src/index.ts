@@ -419,6 +419,14 @@ export const checkoutPaymentSchema = z
   })
   .strict();
 export const publicPaymentAdmissionSchema = z.object({ admitted: z.boolean() }).strict();
+const invalidRateReduction = "rate reduction must be a whole percentage from 1 to 99";
+export const nonRefundablePriceAdjustmentSchema = z.strictObject({
+  reductionPercent: z
+    .number(invalidRateReduction)
+    .int(invalidRateReduction)
+    .min(1, invalidRateReduction)
+    .max(99, invalidRateReduction),
+});
 export const confirmationResendSchema = z
   .object({
     requestId: z.uuid(),
@@ -434,6 +442,9 @@ export type RoomRequest = z.infer<typeof roomRequestSchema>;
 export type CheckoutAcceptance = z.infer<typeof checkoutAcceptanceSchema>;
 export type CheckoutPayment = z.infer<typeof checkoutPaymentSchema>;
 export type PublicPaymentAdmissionRequest = z.input<typeof publicPaymentAdmissionSchema>;
+export type NonRefundablePriceAdjustmentRequest = z.input<
+  typeof nonRefundablePriceAdjustmentSchema
+>;
 export type WorkflowAction = z.infer<typeof workflowActionSchema>;
 export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowCreate = z.infer<typeof workflowCreateSchema>;
