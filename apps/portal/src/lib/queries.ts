@@ -43,6 +43,7 @@ import {
   listRooms,
   listAccounts,
   listRatePlans,
+  updateNonRefundablePriceAdjustment,
   previewWorkflowBooking,
   login,
   setAccountPassword,
@@ -208,11 +209,27 @@ export function useRoomTypes() {
   });
 }
 
+const ratePlansKey = ["rate-plans"] as const;
+
 export function useRatePlans() {
   return useQuery({
-    queryKey: ["rate-plans"],
+    queryKey: ratePlansKey,
     queryFn: ({ signal }) => listRatePlans(signal),
-    staleTime: Infinity,
+  });
+}
+
+export function useUpdateNonRefundablePriceAdjustment() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: updateNonRefundablePriceAdjustment,
+    onSuccess: async (plans) => {
+      await client.cancelQueries({ queryKey: ratePlansKey });
+      client.setQueryData(ratePlansKey, plans);
+      await Promise.all([
+        client.resetQueries({ queryKey: ["inventory"] }),
+        client.invalidateQueries({ queryKey: ["creation-preview"] }),
+      ]);
+    },
   });
 }
 

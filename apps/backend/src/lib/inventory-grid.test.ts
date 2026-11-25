@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { inventoryGrid, peakOccupied, type GridRoomType } from "./inventory-grid";
+import { defaultRatePlans } from "./rate-plans";
 
 const deluxe: GridRoomType = {
   id: "deluxe",
@@ -27,6 +28,7 @@ describe("inventoryGrid", () => {
       ],
       [],
       [{ roomTypeId: "deluxe", date: "2026-12-25", priceCents: 20000 }],
+      defaultRatePlans,
     );
     expect(type?.nights).toEqual([
       {

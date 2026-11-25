@@ -16,6 +16,8 @@ export type RatePlanTerms = {
   priceAdjustmentPercent: number;
 };
 
+export type RatePlans = Record<RatePlanCode, RatePlanTerms>;
+
 const cancellationPolicies = {
   freeUntil2DaysBefore: {
     chargeBasis: "first_night",
@@ -27,7 +29,7 @@ const cancellationPolicies = {
   },
 } satisfies Record<string, CancellationPolicy>;
 
-export const ratePlans = {
+export const defaultRatePlans = {
   flexible: {
     plan: "flexible",
     cancellationPolicy: cancellationPolicies.freeUntil2DaysBefore,
@@ -40,7 +42,7 @@ export const ratePlans = {
     paymentSchedule: "full_upfront",
     priceAdjustmentPercent: -10,
   },
-} satisfies Record<RatePlanCode, RatePlanTerms>;
+} satisfies RatePlans;
 
 type Reservation = typeof reservations.$inferSelect;
 type TermColumns = Pick<

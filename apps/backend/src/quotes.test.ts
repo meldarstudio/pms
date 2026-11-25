@@ -69,6 +69,10 @@ describe("quotes", () => {
 
   it("saves the online reservation at the quoted prices after a rate change", async () => {
     const quoted = await quote();
+    await db.signIn("owner");
+    expect(
+      (await db.request("/rate-plans/non-refundable", "PUT", { reductionPercent: 20 })).status,
+    ).toBe(200);
     db.sqlite.exec(
       "INSERT INTO room_type_rates (id, room_type_id, date, price_cents) VALUES ('rate', 'type', '2026-10-20', 20000)",
     );
@@ -81,7 +85,7 @@ describe("quotes", () => {
       guest: { fullName: "Ana Torres", email: "ana@example.com" },
       checkIn: "2026-10-20",
       checkOut: "2026-10-22",
-      ratePlan: { plan: "non_refundable" },
+      ratePlan: { plan: "non_refundable", priceAdjustmentPercent: -10 },
       totalCents: 18000,
       requiredInitialPaymentCents: 18000,
       rooms: [{ roomTypeId: "type", roomId: null, adults: 2, children: 0 }],

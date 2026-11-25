@@ -293,3 +293,34 @@ it("hides Pagos from staff and sends a direct visit to Habitaciones without read
   );
   assert.equal(api.requests("GET", "/controls/public-payments").length, 0);
 });
+
+it("retains an unsaved rate adjustment after a failed save so the owner can retry", async () => {
+  signedInAs("owner");
+  const plan = {
+    plan: "non_refundable",
+    priceAdjustmentPercent: -10,
+    cancellationPolicy: { chargeBasis: "final_total", freeUntilDaysBeforeCheckIn: null },
+    paymentSchedule: "full_upfront",
+  };
+  let saved = plan;
+  const path = "/rate-plans/non-refundable";
+  api.on("GET", "/rate-plans", () => [saved]);
+  api.on<{ reductionPercent: number }>("PUT", path, ({ body }) => {
+    saved = { ...plan, priceAdjustmentPercent: -body.reductionPercent };
+    return [saved];
+  });
+  api.failOnce("PUT", path, 503);
+  const saves = api.bodies<{ reductionPercent: number }>("PUT", path);
+  await render("/setup?section=rate-plans");
+  await until(() => !!container.querySelector('input[name="reductionPercent"]'));
+
+  await fill("reductionPercent", "20");
+  await click("Guardar");
+  await until(() => container.textContent.includes("No se pudo guardar el ajuste"));
+  assert.equal(input("reductionPercent").value, "20");
+  assert.match(container.textContent, /No reembolsable\s+−10%/);
+
+  await click("Guardar");
+  await until(() => /No reembolsable\s+−20%/.test(container.textContent));
+  assert.deepEqual(saves, [{ reductionPercent: 20 }, { reductionPercent: 20 }]);
+});

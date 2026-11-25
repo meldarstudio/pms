@@ -11,6 +11,7 @@ import {
   EllipsisVerticalIcon,
   LogOutIcon,
   PaletteIcon,
+  PercentIcon,
   SettingsIcon,
   ShieldCheckIcon,
   type LucideIcon,
@@ -62,6 +63,7 @@ import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
 const configurationIcons = {
   rooms: DoorOpenIcon,
+  "rate-plans": PercentIcon,
   appearance: PaletteIcon,
   payments: CreditCardIcon,
   accounts: ShieldCheckIcon,

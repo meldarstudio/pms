@@ -1,6 +1,6 @@
 import type { ReservationStatus } from "../db/schema";
 import { adjustedPriceCents } from "./pricing";
-import { ratePlans, type RatePlanCode } from "./rate-plans";
+import type { RatePlanCode, RatePlans } from "./rate-plans";
 import { holdsInventory } from "./statuses";
 
 export type GridStay = {
@@ -45,7 +45,7 @@ function nightLoad(date: string, stays: GridStay[], closures: GridClosure[]) {
   return { booked, closed };
 }
 
-function planPrices(ordinaryCents: number): Record<RatePlanCode, number> {
+function planPrices(ordinaryCents: number, ratePlans: RatePlans): Record<RatePlanCode, number> {
   return {
     flexible: adjustedPriceCents(ordinaryCents, ratePlans.flexible.priceAdjustmentPercent),
     non_refundable: adjustedPriceCents(
@@ -82,6 +82,7 @@ export function inventoryGrid(
   stays: GridStay[],
   closures: GridClosure[],
   rates: GridRate[],
+  ratePlans: RatePlans,
 ) {
   const active = stays.filter((stay) => holdsInventory(stay.status));
   const priceByType = new Map<string, Map<string, number>>();
@@ -117,7 +118,7 @@ export function inventoryGrid(
             free: Math.max(0, rooms - booked - closed),
             priceCents,
             override: override !== undefined,
-            planPrices: planPrices(priceCents),
+            planPrices: planPrices(priceCents, ratePlans),
           };
         }),
       };

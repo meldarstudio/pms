@@ -29,6 +29,20 @@ export const operationControls = sqliteTable(
   (table) => [check("operation_controls_singleton", sql`${table.id} = 1`)],
 );
 
+export const ratePlanPriceAdjustments = sqliteTable(
+  "rate_plan_price_adjustments",
+  {
+    ratePlan: text("rate_plan").$type<RatePlanCode>().primaryKey().notNull(),
+    priceAdjustmentPercent: integer("price_adjustment_percent").notNull(),
+  },
+  (table) => [
+    check(
+      "non_refundable_price_adjustment",
+      sql`${table.ratePlan} = 'non_refundable' AND typeof(${table.priceAdjustmentPercent}) = 'integer' AND ${table.priceAdjustmentPercent} BETWEEN -99 AND -1`,
+    ),
+  ],
+);
+
 export const roomTypes = sqliteTable("room_types", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),

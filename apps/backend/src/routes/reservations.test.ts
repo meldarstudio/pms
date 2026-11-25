@@ -345,16 +345,28 @@ describe("Non-refundable reservations", () => {
       totalCents: 18010,
     },
     {
-      name: "requires the discounted total upfront",
+      name: "applies the owner's current adjustment and requires the discounted total upfront",
       baseRateCents: 10000,
+      reductionPercent: 20,
       input: body({}, { discountCents: 3000 }),
-      nights: [9000, 9000],
-      totalCents: 15000,
+      nights: [8000, 8000],
+      totalCents: 13000,
     },
   ])("$name in the preview and the saved reservation", async (example) => {
+    if (example.reductionPercent) {
+      await db.signIn("owner");
+      expect(
+        (
+          await request("/rate-plans/non-refundable", "PUT", {
+            reductionPercent: example.reductionPercent,
+          })
+        ).status,
+      ).toBe(200);
+      await db.signIn("staff");
+    }
     db.sqlite.exec(`UPDATE room_types SET base_rate_cents = ${example.baseRateCents}`);
     const expected = {
-      ratePlan: nonRefundable,
+      ratePlan: { ...nonRefundable, priceAdjustmentPercent: -(example.reductionPercent ?? 10) },
       totalCents: example.totalCents,
       requiredInitialPaymentCents: example.totalCents,
       remainingScheduledCents: 0,
@@ -1615,6 +1627,10 @@ describe("reservation dates and lifecycle", () => {
     });
     let d = (await response.json()) as Detail;
     const lineId = d.rooms[0].id;
+    await db.signIn("owner");
+    expect(
+      (await request("/rate-plans/non-refundable", "PUT", { reductionPercent: 20 })).status,
+    ).toBe(200);
     db.sqlite.exec(`UPDATE room_types SET base_rate_cents = 12000 WHERE id = 'type'`);
     const nights = () =>
       db.sqlite

@@ -14,7 +14,8 @@ import {
 import { HttpError, rethrowConflict } from "./http";
 import { loadRoomTypes, occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
-import { ratePlans, termColumns } from "./lib/rate-plans";
+import { termColumns } from "./lib/rate-plans";
+import { currentRatePlan } from "./rate-plan-settings";
 import { reservationAccessValues } from "./reservation-access";
 import type { OnlineArrivalCalendar } from "./property-calendar";
 import { acceptPhone, requireNewOnlineArrival, requireStay } from "./rules";
@@ -35,7 +36,7 @@ export async function priceQuote(
   requireStay(input.checkIn, input.checkOut);
   requireNewOnlineArrival(input.checkIn, context);
   await requireSellableRooms(db, input, context.published);
-  const terms = ratePlans[input.ratePlan];
+  const terms = await currentRatePlan(db, input.ratePlan);
   const nights = await priceRooms(db, input, input.rooms, terms);
   const rooms: QuotedRoom[] = input.rooms.map((room, index) => ({
     roomTypeId: room.roomTypeId,

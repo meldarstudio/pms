@@ -2,9 +2,10 @@ import type { Db } from "./db";
 import { loadRoomTypes, occupiedCounts, ratesBetween, roomCounts } from "./inventory";
 import { chargeableCents, freeCancellationState, freeCancellationUntil } from "./lib/cancellation";
 import { overridesFor, priceNights, totalCents, type PricedNight } from "./lib/pricing";
-import { ratePlans, type RatePlanCode, type RatePlanTerms } from "./lib/rate-plans";
+import type { RatePlanCode, RatePlanTerms } from "./lib/rate-plans";
 import { quoteBill } from "./lib/reservation-bill";
 import type { OnlineArrivalCalendar } from "./property-calendar";
+import { currentRatePlans } from "./rate-plan-settings";
 import { requireNewOnlineArrival, requireStay } from "./rules";
 
 export type OfferSearch = { checkIn: string; checkOut: string };
@@ -31,7 +32,7 @@ export async function searchOffers(
   requireNewOnlineArrival(search.checkIn, context);
   const loaded = await loadRoomTypes(db, context.published);
   const types = context.published.flatMap((id) => loaded.filter((type) => type.id === id));
-  const [occupied, counts, rates] = await Promise.all([
+  const [occupied, counts, rates, ratePlans] = await Promise.all([
     occupiedCounts(db, search.checkIn, search.checkOut),
     roomCounts(db),
     ratesBetween(
@@ -40,6 +41,7 @@ export async function searchOffers(
       search.checkIn,
       search.checkOut,
     ),
+    currentRatePlans(db),
   ]);
   return {
     checkIn: search.checkIn,
