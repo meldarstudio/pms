@@ -129,14 +129,15 @@ test("a guest can search without JavaScript and resume a shared two-room stay th
         VALUES ('room-page-override', '${PUBLISHED_ROOM_TYPE_IDS[0]}', '${stay.checkIn}', 15000);`,
     );
     const bare = await noJs.newPage();
-    for (const [lang, prefix] of [
-      ["es", ""],
-      ["en", "/en"],
+    for (const [lang, prefix, prompt] of [
+      ["es", "", "Elija sus fechas para ver precios y disponibilidad."],
+      ["en", "/en", "Choose your dates to see prices and availability."],
     ] as const) {
       const response = await bare.goto(`${prefix}/habitaciones/`);
       expect(response?.status()).toBe(200);
       await expect(bare.locator("html")).toHaveAttribute("lang", lang);
-      await expect(bare.getByRole("article").first()).toContainText(/S\/\s100\.00/);
+      await expect(bare.getByText(prompt, { exact: true })).toBeVisible();
+      await expect(bare.locator("main")).not.toContainText(/S\/\s*\d/);
 
       const dated = await bare.goto(roomsPath(stay, {}, prefix));
       expect(dated?.headers()["cache-control"]).toContain("no-store");

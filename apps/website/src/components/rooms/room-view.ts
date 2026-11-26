@@ -29,10 +29,6 @@ export type RoomView = {
 export type StayDetail = { id: StayDetailId; label: string };
 export type StayDetails = { inRoom: StayDetail[]; hotel: StayDetail[] };
 
-type ReferenceRates =
-  | { kind: "found"; amounts: Partial<Record<RoomId, string>> }
-  | { kind: "unavailable" };
-
 export type RoomsBookingProps = {
   lang: Lang;
   apiBase: string;
@@ -43,7 +39,6 @@ export type RoomsBookingProps = {
   searchCopy: StaySearchCopy;
   action: string;
   initial: { search: StaySearch; outcome: SearchOutcome | null };
-  referenceRates: ReferenceRates;
 };
 
 export type Phase =

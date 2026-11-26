@@ -166,11 +166,6 @@ export const ui = {
     "rooms.cta": "See all room types",
     "rooms.imageAlt": "King room at Hotel Manantial",
     "rooms.pageTitle": "Rooms & rates in Churín",
-    "rooms.referenceRate": "Reference rate",
-    "rooms.referenceRateBasis":
-      "Flexible base rate, per room per night. It is not a minimum or an offer for specific dates.",
-    "rooms.referenceRateMissing": "No published reference rate.",
-    "rooms.referenceRateUnavailable": "Reference rates are temporarily unavailable.",
     "rooms.searchGuide":
       "Search parameters: checkIn and checkOut are YYYY-MM-DD. adults and children are one number for one room. Several rooms are written in order, separated by commas, for example adults=2,1&children=0,1. The number of adults values is the number of rooms. room, if present, only moves that room up; it does not filter or select it.",
     "rooms.liveOffers": "Offers for this search",
@@ -858,12 +853,6 @@ export const ui = {
     "rooms.cta": "Ver todos los tipos de habitación",
     "rooms.imageAlt": "Suite matrimonial del Hotel Manantial",
     "rooms.pageTitle": "Habitaciones y precios en Churín",
-    "rooms.referenceRate": "Tarifa de referencia",
-    "rooms.referenceRateBasis":
-      "Tarifa Flexible base, por habitación y por noche. No es un mínimo ni una oferta para fechas concretas.",
-    "rooms.referenceRateMissing": "Sin tarifa de referencia publicada.",
-    "rooms.referenceRateUnavailable":
-      "Las tarifas de referencia no están disponibles en este momento.",
     "rooms.searchGuide":
       "Parámetros de búsqueda: checkIn y checkOut son AAAA-MM-DD. adults y children son un número para una habitación. Varias habitaciones se escriben en orden, separadas por comas, por ejemplo adults=2,1&children=0,1. La cantidad de valores en adults es la cantidad de habitaciones. room, si está, solo sube esa habitación; no filtra ni la elige.",
     "rooms.liveOffers": "Ofertas para esta búsqueda",

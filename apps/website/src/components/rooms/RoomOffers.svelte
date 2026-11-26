@@ -37,12 +37,10 @@
     onPrevious,
     onChangeRoom,
     onPlan,
-    referenceAmounts,
   }: Pick<RoomsBookingProps, "lang" | "text" | "searchCopy" | "reviewHref" | "rooms" | "details"> & {
     phase: Phase;
     draft: StaySearch;
     offersFor: OffersFor;
-    referenceAmounts: Partial<Record<RoomId, string>>;
     onChooseDates: () => void;
     onOpenRoom: (room: RoomId) => void;
     onContinue: () => void;
@@ -174,7 +172,6 @@
                 {details}
                 {offers}
                 {marked}
-                referenceRate={referenceAmounts[item.id]}
               >
                 <div class="text-right">
                   {#if phase.kind === "idle"}

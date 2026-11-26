@@ -278,27 +278,6 @@ describe("public offer search", () => {
   });
 });
 
-describe("reference rates", () => {
-  it("returns the published base rate, not a date override or an unlisted type", async () => {
-    seedRoomType(db.sqlite, { id: "type-new", name: "Suite", maxAdults: 2, baseRateCents: 9000 });
-    db.sqlite.exec(
-      "INSERT INTO room_type_rates (id, room_type_id, date, price_cents) VALUES ('rate', 'type-king', '2026-10-21', 12345)",
-    );
-
-    const response = await app.request(
-      "/public/reference-rates",
-      { headers: { origin: WEBSITE_ORIGIN, "cf-connecting-ip": "203.0.113.9" } },
-      db.env,
-    );
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      currency: "PEN",
-      roomTypes: [{ id: "type-king", baseRateCents: 10000 }],
-    });
-  });
-});
-
 describe("public access boundary", () => {
   it.each([
     ["GET", "/reservations"],

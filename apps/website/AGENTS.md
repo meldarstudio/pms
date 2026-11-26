@@ -7,10 +7,10 @@ release workflow supplies the production URL.
 
 ## Booking flow
 
-- Choose: `src/middleware.ts` loads room rates into `Astro.locals.roomPage` and sets browser
-  and CDN no-store headers. Keep that read on the request path so the first HTML includes prices
-  without JavaScript. Forward `cf-connecting-ip` for the visitor's offer limit; keep the limit
-  if Cloudflare overwrites the header on the API subrequest.
+- Choose: `src/middleware.ts` loads dated offers into `Astro.locals.roomPage` and sets browser
+  and CDN no-store headers. Keep the offer read on the request path so the first HTML includes
+  prices. Undated pages prompt for dates without fetching prices. Forward `cf-connecting-ip`
+  for the visitor's offer limit; keep the limit if Cloudflare overwrites the header on the API subrequest.
 - `src/components/rooms/RoomsBooking.svelte` renders Choose; `src/lib/rooms.ts` maps cards
   to PMS room-type IDs.
 - Review is `/reservar/revisar/`, one Svelte island (`src/components/reservation/review/Review.svelte`).

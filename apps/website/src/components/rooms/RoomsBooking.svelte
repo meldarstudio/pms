@@ -43,7 +43,6 @@
     searchCopy,
     action,
     initial,
-    referenceRates,
   }: RoomsBookingProps = $props();
 
   const backendProblems: Record<string, RoomsBookingKey> = {
@@ -369,9 +368,6 @@
     >
       {status}
     </p>
-    {#if referenceRates.kind === "unavailable"}
-      <p class="mt-4 text-stone-700">{text["rooms.referenceRateUnavailable"]}</p>
-    {/if}
     {#if phase.kind === "problem"}
       <div
         bind:this={problemPanel}
@@ -418,7 +414,6 @@
   {phase}
   draft={address}
   {offersFor}
-  referenceAmounts={referenceRates.kind === "found" ? referenceRates.amounts : {}}
   onChooseDates={chooseDates}
   onOpenRoom={openRoom}
   onContinue={continueRoom}

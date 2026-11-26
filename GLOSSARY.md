@@ -244,11 +244,6 @@ _Avoid_: Room type, price rule
 A room type's price for a date: its rate override, otherwise its base rate.
 _Avoid_: Saved nightly price
 
-**Reference rate / Tarifa de referencia**:
-A published room type's Flexible base rate per room per night, shown without stay dates.
-It is not a minimum price or an offer for a specific stay.
-_Avoid_: From price, live offer, quote
-
 **Flexible**:
 The default rate plan, charging the ordinary nightly price without adjustment.
 

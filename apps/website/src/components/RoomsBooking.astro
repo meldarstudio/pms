@@ -1,12 +1,11 @@
 ---
 import RoomsBookingIsland from "@/components/rooms/RoomsBooking.svelte";
-import type { RoomView, RoomsBookingProps, StayDetails } from "@/components/rooms/room-view";
+import type { RoomView, StayDetails } from "@/components/rooms/room-view";
 import { roomsBookingText } from "@/components/rooms/text";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { hotelServices, roomAmenities, type StayDetailId } from "@/lib/included";
 import { PUBLIC_PMS_API_URL } from "astro:env/client";
 import { getRelativeLocaleUrl } from "astro:i18n";
-import { formatMoney } from "@/lib/reservation/format";
 import { reviewStepHref } from "@/lib/reservation/links";
 import { staySearchCopy } from "@/lib/reservation/stay-copy";
 import { rooms } from "@/lib/rooms";
@@ -15,21 +14,6 @@ const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const { roomPage } = Astro.locals;
 if (!roomPage) throw new Error("Room booking requires room page middleware data");
-const { initial, reference } = roomPage;
-let referenceRates: RoomsBookingProps["referenceRates"] = { kind: "unavailable" };
-if (reference.kind === "found") {
-  const { currency, roomTypes } = reference.result;
-  const byType = new Map(roomTypes.map(({ id, baseRateCents }) => [id, baseRateCents]));
-  referenceRates = {
-    kind: "found",
-    amounts: Object.fromEntries(
-      rooms.flatMap((room) => {
-        const cents = room.pmsRoomTypeId && byType.get(room.pmsRoomTypeId);
-        return typeof cents === "number" ? [[room.id, formatMoney(cents, currency)]] : [];
-      }),
-    ),
-  };
-}
 const searchCopy = staySearchCopy(t, t("reservation.search.submit"));
 const views: RoomView[] = rooms.map((room) => ({
   id: room.id,
@@ -63,8 +47,7 @@ const details: StayDetails = {
   text={roomsBookingText(t)}
   searchCopy={searchCopy}
   action={getRelativeLocaleUrl(lang, "habitaciones")}
-  {initial}
-  {referenceRates}
+  initial={roomPage}
 />
 
 <style is:global>

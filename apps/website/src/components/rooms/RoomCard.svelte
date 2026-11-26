@@ -23,7 +23,6 @@
     details,
     offers,
     marked = false,
-    referenceRate = null,
     children,
   }: {
     room: RoomView;
@@ -31,7 +30,6 @@
     details: StayDetails;
     offers?: RoomTypeOffers;
     marked?: boolean;
-    referenceRate?: string | null;
     children: Snippet;
   } = $props();
 
@@ -94,14 +92,6 @@
   {/if}
   <div class="flex grow flex-col p-5">
     <h2 id={nameId} class="text-xl font-semibold text-pretty text-stone-900">{room.name}</h2>
-    <p class="mt-2 text-sm text-stone-700">
-      <span class="font-semibold text-stone-900">{text["rooms.referenceRate"]}</span>
-      {#if referenceRate}
-        {referenceRate}. {text["rooms.referenceRateBasis"]}
-      {:else}
-        {text["rooms.referenceRateMissing"]}
-      {/if}
-    </p>
     {@render factList([...facts, { id: "wifi", label: text["rooms.card.wifi"] }], true)}
     <Dialog presentation={wide.current ? "dialog" : "sheet"}>
       <DialogTrigger
