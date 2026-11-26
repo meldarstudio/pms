@@ -2,7 +2,7 @@
   import { Effect } from "effect";
   import { onMount, untrack } from "svelte";
   import StaySearchForm from "@/components/stay-search/StaySearchForm.svelte";
-  import { fill, formatList } from "@/lib/reservation/format";
+  import { fill, formatDate, formatList } from "@/lib/reservation/format";
   import { startIsland, type Latest } from "@/lib/island";
   import { PmsClient } from "@/lib/pms-client";
   import {
@@ -11,7 +11,9 @@
     type SearchOutcome,
   } from "@/lib/reservation/offers";
   import {
+    addDays,
     hasStayDates,
+    newRoomRequest,
     ratesOpen,
     readSearch,
     searchParams,
@@ -42,6 +44,7 @@
     text,
     searchCopy,
     action,
+    tomorrow,
     initial,
   }: RoomsBookingProps = $props();
 
@@ -162,13 +165,21 @@
     };
   });
   const status = $derived(
-    phase.kind === "idle"
-      ? say("reservation.choose.missing")
-      : phase.kind === "loading"
-        ? say("reservation.choose.loading")
-        : phase.kind === "found"
-          ? say("reservation.choose.loaded")
-          : "",
+    phase.kind === "loading"
+      ? say("reservation.choose.loading")
+      : phase.kind === "found"
+        ? say("reservation.choose.loaded")
+        : "",
+  );
+  const tomorrowNightHref = $derived(
+    `${action}?${searchParams({
+      checkIn: tomorrow,
+      checkOut: addDays(tomorrow, 1),
+      requests: [newRoomRequest()],
+      at: 0,
+      plan: null,
+      featured: address.featured,
+    })}`,
   );
 
   const sameStay = (a: StaySearch, b: StaySearch) =>
@@ -356,19 +367,24 @@
         {lang}
         {roomIds}
         {action}
-        nativeFallback
         initial={boot.search}
         copy={searchCopy}
         onSearch={(next) => search(editParty(address, next))}
       />
     </div>
-    <p
-      data-search-status
-      class={phase.kind === "idle" ? "mt-4 text-stone-700" : "sr-only"}
-      role="status"
-    >
-      {status}
-    </p>
+    {#if phase.kind === "idle"}
+      {@const [before, after] = say("reservation.choose.missing").split("{shortcut}")}
+      <p class="mt-4 text-stone-700">
+        {before}<a
+          href={tomorrowNightHref}
+          data-astro-prefetch="false"
+          class="text-accent-800 underline underline-offset-4"
+        >{say("reservation.choose.tomorrowNight", {
+            date: formatDate(tomorrow, lang, { includeWeekday: false, includeYear: false }),
+          })}</a>{after}
+      </p>
+    {/if}
+    <p data-search-status class="sr-only" role="status">{status}</p>
     {#if phase.kind === "problem"}
       <div
         bind:this={problemPanel}

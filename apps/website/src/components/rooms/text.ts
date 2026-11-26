@@ -4,6 +4,7 @@ import type { useTranslations } from "@/i18n/utils";
 
 export const roomsBookingKeys = [
   "reservation.choose.missing",
+  "reservation.choose.tomorrowNight",
   "reservation.choose.loading",
   "reservation.choose.loaded",
   "reservation.choose.retry",

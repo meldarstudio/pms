@@ -7,6 +7,7 @@ import { hotelServices, roomAmenities, type StayDetailId } from "@/lib/included"
 import { PUBLIC_PMS_API_URL } from "astro:env/client";
 import { getRelativeLocaleUrl } from "astro:i18n";
 import { reviewStepHref } from "@/lib/reservation/links";
+import { addDays, onlineArrivalCalendar } from "@/lib/reservation/search";
 import { staySearchCopy } from "@/lib/reservation/stay-copy";
 import { rooms } from "@/lib/rooms";
 
@@ -14,6 +15,7 @@ const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const { roomPage } = Astro.locals;
 if (!roomPage) throw new Error("Room booking requires room page middleware data");
+const tomorrow = addDays(onlineArrivalCalendar().today, 1);
 const searchCopy = staySearchCopy(t, t("reservation.search.submit"));
 const views: RoomView[] = rooms.map((room) => ({
   id: room.id,
@@ -47,6 +49,7 @@ const details: StayDetails = {
   text={roomsBookingText(t)}
   searchCopy={searchCopy}
   action={getRelativeLocaleUrl(lang, "habitaciones")}
+  {tomorrow}
   initial={roomPage}
 />
 

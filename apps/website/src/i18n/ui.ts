@@ -359,7 +359,9 @@ export const ui = {
     "reservation.helpPrompt": "Questions? We're happy to help.",
     "reservation.choose.loading": "Checking availability…",
     "reservation.choose.loaded": "Showing rooms for your search.",
-    "reservation.choose.missing": "Choose your dates to see prices and availability.",
+    "reservation.choose.missing":
+      "Choose your dates to see prices and availability, or {shortcut}.",
+    "reservation.choose.tomorrowNight": "check tomorrow night ({date})",
     "reservation.choose.unavailable.title": "We couldn't check availability right now",
     "reservation.choose.unavailable.body":
       "This is a problem on our side, not a lack of rooms. Your search is kept: try again in a moment, or message us on WhatsApp.",
@@ -1041,7 +1043,10 @@ export const ui = {
     "reservation.helpPrompt": "¿Dudas? Con gusto le ayudamos.",
     "reservation.choose.loading": "Consultando disponibilidad…",
     "reservation.choose.loaded": "Mostrando habitaciones para su búsqueda.",
-    "reservation.choose.missing": "Elija sus fechas para ver precios y disponibilidad.",
+    "reservation.choose.missing":
+      "Elija sus fechas para ver precios y disponibilidad o {shortcut}.",
+    "reservation.choose.tomorrowNight":
+      "consulte la disponibilidad para mañana por la noche ({date})",
     "reservation.choose.unavailable.title":
       "No pudimos consultar la disponibilidad en este momento",
     "reservation.choose.unavailable.body":

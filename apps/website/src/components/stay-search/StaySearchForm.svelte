@@ -58,7 +58,6 @@
     lang,
     copy,
     roomIds = [],
-    nativeFallback = false,
     initial,
   }: StaySearchProps = $props();
   const datePopup = createPopoverController<DateField>();
@@ -156,11 +155,10 @@
   {action}
   method="get"
   novalidate
-  aria-busy={!ready && !nativeFallback}
+  aria-busy={!ready}
   onsubmit={submit}
 >
-  <fieldset class="lp-fields" disabled={!ready && !nativeFallback}>
-    {#if ready || !nativeFallback}
+  <fieldset class="lp-fields" disabled={!ready}>
     <Popover controller={datePopup} presentation={mobile ? "sheet" : "popover"}>
       {#each dateFields as field (field)}
         {@const id = dateId(field)}
@@ -177,7 +175,11 @@
             onclick={() => prepareDatePicker(field)}
           >
             <span id={`${id}-value`} class:lp-placeholder={!search[field]}>
-              {search[field] ? dayDisplay(search[field], lang) : placeholder(copy, field)}
+              {#if search[field]}
+                <time datetime={search[field]}>{dayDisplay(search[field], lang)}</time>
+              {:else}
+                {placeholder(copy, field)}
+              {/if}
             </span>
             <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor">
               <rect x="2" y="3.5" width="12" height="10.5" /><path d="M2 6.5h12M5 2v3M11 2v3" />
@@ -352,41 +354,6 @@
         </PopoverContent>
       </Popover>
     </div>
-    {/if}
-    {#if nativeFallback}
-      {#each dateFields as field (field)}
-        <div class="lp-field" hidden={ready}>
-          <label for={`native-${field}`}>{copy[field]}</label>
-          <input
-            class="lp-native"
-            id={`native-${field}`}
-            type="date"
-            name={field}
-            value={search[field]}
-          />
-        </div>
-      {/each}
-      {#each guestFields as { name } (name)}
-        <div class="lp-field" hidden={ready}>
-          <label for={`native-${name}`}>{copy[name]}</label>
-          <input
-            class="lp-native"
-            id={`native-${name}`}
-            type="text"
-            {name}
-            autocomplete="off"
-            value={search.requests.map((request) => request[name]).join(",")}
-          />
-        </div>
-      {/each}
-    {:else}
-      {#each dateFields as field (field)}
-        <input type="hidden" name={field} value={search[field]} />
-      {/each}
-      {#each guestFields as { name } (name)}
-        <input type="hidden" {name} value={search.requests.map((request) => request[name]).join(",")} />
-      {/each}
-    {/if}
     <button type="submit" class="lp-submit">{copy.submit}</button>
   </fieldset>
   <p class="sr-only" role="status" aria-atomic="true">{announcement}</p>

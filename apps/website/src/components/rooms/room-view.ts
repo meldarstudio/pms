@@ -38,6 +38,7 @@ export type RoomsBookingProps = {
   text: RoomsBookingText;
   searchCopy: StaySearchCopy;
   action: string;
+  tomorrow: string;
   initial: { search: StaySearch; outcome: SearchOutcome | null };
 };
 

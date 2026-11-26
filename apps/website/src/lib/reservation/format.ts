@@ -9,13 +9,17 @@ export function formatMoney(cents: number, currency: string) {
   );
 }
 
-export function formatDate(label: string, lang: Lang, { includeWeekday = true } = {}) {
+export function formatDate(
+  label: string,
+  lang: Lang,
+  { includeWeekday = true, includeYear = true } = {},
+) {
   return new Intl.DateTimeFormat(locales[lang], {
     timeZone: "UTC",
     weekday: includeWeekday ? "short" : undefined,
     day: "numeric",
     month: "short",
-    year: "numeric",
+    year: includeYear ? "numeric" : undefined,
   }).format(new Date(`${label}T00:00:00Z`));
 }
 
