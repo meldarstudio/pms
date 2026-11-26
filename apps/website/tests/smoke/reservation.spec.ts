@@ -27,6 +27,10 @@ function roomsPath(
 const room = (page: Page, name: string) => page.getByRole("article", { name });
 const rateLinks = (card: ReturnType<typeof room>) =>
   card.getByRole("link", { name: /^Continuar con .*tarifa/ });
+const tomorrowNightLink = (page: Page) =>
+  page.getByRole("link", {
+    name: /^(check tomorrow night|consulte la disponibilidad para mañana por la noche) \(.+\)$/,
+  });
 
 test("a room's dates button picks the stay on the rooms page and books a rate straight to review", async ({
   page,
@@ -34,7 +38,7 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
   const stay = openStay();
   await page.goto("/habitaciones/?room=king");
 
-  await expect(page.getByText("Elija sus fechas para ver precios y disponibilidad.")).toBeVisible();
+  await expect(tomorrowNightLink(page)).toHaveAttribute("href", /&room=king$/);
   await expect(page.getByRole("article")).toHaveCount(3);
   await expect(page.getByRole("article").first()).toHaveAccessibleName("Suite Matrimonial");
   const steps = page.getByRole("navigation", { name: "Pasos de la reserva" });
@@ -91,11 +95,12 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
   );
 });
 
-test("a guest can search without JavaScript and resume a shared two-room stay through Review", async ({
+test("the tomorrow link exposes a live search before JavaScript and a shared stay resumes through Review", async ({
   browser,
   page,
 }) => {
   const stay = { checkIn: daysFromToday(240), checkOut: daysFromToday(242) };
+  const tomorrow = { checkIn: daysFromToday(1), checkOut: daysFromToday(2) };
   const state = fileURLToPath(new URL("../../.local-api/state", import.meta.url));
   const db = localDatabase(state);
   const noJs = await browser.newContext({ baseURL: WEBSITE_URL, javaScriptEnabled: false });
@@ -106,17 +111,30 @@ test("a guest can search without JavaScript and resume a shared two-room stay th
         VALUES ('room-page-override', '${PUBLISHED_ROOM_TYPE_IDS[0]}', '${stay.checkIn}', 15000);`,
     );
     const bare = await noJs.newPage();
-    for (const [lang, prefix, prompt] of [
-      ["es", "", "Elija sus fechas para ver precios y disponibilidad."],
-      ["en", "/en", "Choose your dates to see prices and availability."],
+    for (const [lang, prefix] of [
+      ["es", ""],
+      ["en", "/en"],
     ] as const) {
       const response = await bare.goto(`${prefix}/habitaciones/`);
       expect(response?.status()).toBe(200);
       await expect(bare.locator("html")).toHaveAttribute("lang", lang);
-      await expect(bare.getByText(prompt, { exact: true })).toBeVisible();
       await expect(bare.locator("main")).not.toContainText(/S\/\s*\d/);
 
-      const dated = await bare.goto(roomsPath(stay, {}, prefix));
+      const shortcut = tomorrowNightLink(bare);
+      await expect(shortcut).toHaveAttribute("href", roomsPath(tomorrow, { adults: "1" }, prefix));
+      const datedUrl = new URL((await shortcut.getAttribute("href"))!, WEBSITE_URL);
+      if (lang === "es") {
+        await shortcut.click();
+        await expect(bare.locator("#stay-check-in time")).toHaveAttribute(
+          "datetime",
+          tomorrow.checkIn,
+        );
+      }
+      datedUrl.searchParams.set("checkIn", stay.checkIn);
+      datedUrl.searchParams.set("checkOut", stay.checkOut);
+      const dated = await bare.goto(datedUrl.href);
+      await expect(tomorrowNightLink(bare)).toHaveCount(0);
+      await expect(bare.getByText(/· 1 (adult|adulto)/)).toBeVisible();
       expect(dated?.headers()["cache-control"]).toContain("no-store");
       expect(dated?.headers()["cdn-cache-control"]).toBe("no-store");
       await expect(bare.locator('link[rel="canonical"]')).toHaveAttribute(
@@ -133,15 +151,6 @@ test("a guest can search without JavaScript and resume a shared two-room stay th
         new RegExp(`^${prefix}/reservar/revisar/\\?.*&types=king&plan=flexible$`),
       );
     }
-
-    await bare.goto("/habitaciones/");
-    await bare.locator('[name="checkIn"]').fill(stay.checkIn);
-    await bare.locator('[name="checkOut"]').fill(stay.checkOut);
-    await bare.locator('[name="adults"]').fill("2,1");
-    await bare.locator('[name="children"]').fill("0,0");
-    await bare.getByRole("button", { name: "Buscar", exact: true }).click();
-    await expect(bare).toHaveURL(roomsPath(stay, { adults: "2,1", children: "0,0" }));
-    await expect(bare.getByRole("heading", { name: /Habitación 2 de 2/ })).toBeVisible();
 
     await bare.goto(roomsPath(doubleSoldOutStay()));
     await expect(

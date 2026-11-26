@@ -33,12 +33,12 @@ test("homepage search opens the rooms for the chosen stay and keeps it on return
   });
   await expect(page).toHaveURL(new RegExp(`/habitaciones/\\?${params.toString()}$`));
   await expect(page.locator("#stay-guests-value")).toHaveText("1 habitación, 2 huéspedes");
-  await expect(page.locator('input[name="checkOut"]')).toHaveValue(stay.checkOut);
+  await expect(page.locator("#stay-check-out time")).toHaveAttribute("datetime", stay.checkOut);
   await expect(page.getByRole("article", { name: "Suite Matrimonial" })).toBeVisible();
 
   await page.goBack();
   const form = page.locator("#availability");
-  await expect(form.locator('input[name="checkIn"]')).toHaveValue(stay.checkIn);
-  await expect(form.locator('input[name="checkOut"]')).toHaveValue(stay.checkOut);
+  await expect(form.locator("#stay-check-in time")).toHaveAttribute("datetime", stay.checkIn);
+  await expect(form.locator("#stay-check-out time")).toHaveAttribute("datetime", stay.checkOut);
   await expect(form.locator("#stay-guests-value")).toHaveText("1 habitación, 2 huéspedes");
 });
