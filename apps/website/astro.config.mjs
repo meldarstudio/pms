@@ -5,6 +5,7 @@ import svelte from "@astrojs/svelte";
 import tailwindcss from "@tailwindcss/vite";
 import sitemap from "@astrojs/sitemap";
 import { hreflangs } from "./src/i18n/hreflang.ts";
+import { roomGalleryImages } from "./build/room-gallery-images.mjs";
 
 function copyEnglish404() {
   return {
@@ -46,7 +47,7 @@ export default defineConfig({
     },
   },
   vite: {
-    plugins: [tailwindcss()],
+    plugins: [tailwindcss(), roomGalleryImages()],
   },
   i18n: {
     locales: ["es", "en"],

@@ -29,11 +29,9 @@ export type RoomView = {
 export type StayDetail = { id: StayDetailId; label: string };
 export type StayDetails = { inRoom: StayDetail[]; hotel: StayDetail[] };
 
-export type ReferenceRateView = {
-  currency: string;
-  byType: Record<string, number>;
-  unavailable: boolean;
-};
+type ReferenceRates =
+  | { kind: "found"; amounts: Partial<Record<RoomId, string>> }
+  | { kind: "unavailable" };
 
 export type RoomsBookingProps = {
   lang: Lang;
@@ -44,15 +42,13 @@ export type RoomsBookingProps = {
   text: RoomsBookingText;
   searchCopy: StaySearchCopy;
   action: string;
-  initialStay: StaySearch | null;
-  settled: SearchOutcome | null;
-  referenceRates: ReferenceRateView;
-  referenceAmounts: Record<RoomId, string | null>;
+  initial: { search: StaySearch; outcome: SearchOutcome | null };
+  referenceRates: ReferenceRates;
 };
 
 export type Phase =
   | { kind: "idle" }
-  | { kind: "loading"; search: StaySearch; previous?: OfferSearchResult }
+  | { kind: "loading"; search: StaySearch }
   | { kind: "problem"; title: RoomsBookingKey; body: RoomsBookingKey; retry: boolean }
   | { kind: "found"; search: StaySearch; result: OfferSearchResult };
 

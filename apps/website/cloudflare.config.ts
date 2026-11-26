@@ -7,7 +7,12 @@ export default defineConfig({
     previewUrls: false,
     assets: {
       notFoundHandling: "404-page",
-      runWorkerFirst: ["/habitaciones", "/habitaciones/*", "/en/habitaciones", "/en/habitaciones/*"],
+      runWorkerFirst: [
+        "/habitaciones",
+        "/habitaciones/*",
+        "/en/habitaciones",
+        "/en/habitaciones/*",
+      ],
     },
   },
 });

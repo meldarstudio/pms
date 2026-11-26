@@ -7,12 +7,9 @@ release workflow supplies the production URL.
 
 ## Booking flow
 
-- Choose is `/habitaciones/`, one Svelte island (`src/components/rooms/RoomsBooking.svelte`).
-  The initial HTML includes each published room type's reference rate and, when the URL has a
-  stay, that stay's live offers. The island reuses a settled offer read instead of requesting it
-  again. `src/lib/rooms.ts` links each room to a PMS room-type ID. The server-side read forwards
-  `cf-connecting-ip` so the guest offer limit stays the visitor's; if Cloudflare overwrites that
-  header on the API subrequest, do not remove the limit.
+- Choose: `src/components/rooms/RoomsBooking.svelte`; `src/lib/rooms.ts` maps cards to PMS
+  room-type IDs. The server-side read forwards `cf-connecting-ip` so the guest offer limit
+  stays the visitor's; if Cloudflare overwrites it on the API subrequest, do not remove the limit.
 - Review is `/reservar/revisar/`, one Svelte island (`src/components/reservation/review/Review.svelte`).
   Its checkout and payment decisions live in the pure `src/lib/reservation/checkout-flow.ts`
   (`next(state, event)` returns the next state and effects); `checkout-runner.ts` performs the
@@ -42,13 +39,13 @@ metadata, and structured data.
 Run commands from the repository root with `pnpm --filter @pms/website`.
 
 - Run `verify:build` for pages, assets, configuration, or translations. It checks
-  locale parity, canonical URLs, redirects, sitemap entries, and the share image.
+  static page metadata, locale parity, Worker routing, redirects, the sitemap, and the share image.
 - Run `test:smoke` for stay search, Review, payment, or the complaint form.
   Manually check mobile menu changes. Smoke runs against a local API that
   `scripts/local-api.mjs` starts with the backend's `cf dev` and a seeded D1 in
   `.local-api/`; Culqi, Culqi3DS and Turnstile are stubbed (`tests/support/payment.ts`,
   `scripts/fake-payment-services.mjs`). It never calls production.
-- Run `exec node scripts/check-links.mjs` against a fresh build for link changes.
+- Run `exec node scripts/check-links.mjs` against a fresh build for static link changes.
   Add `--internal-only` to skip external requests.
 - Install the test browser with `exec playwright install chromium` when needed.
 
@@ -82,6 +79,8 @@ the English 404 page to `dist/en/404.html` for Cloudflare.
 - `src/components/Footer.astro`: Libro de Reclamaciones link and Annex III notice.
   For complaint disclosures, use `@pms/shared/complaint-book.json` in `src/components/complaints/`.
 - Import images from `src/assets` and use `astro:assets` `Image` or `Picture` with `layout`.
+  Room gallery imports use `?room-gallery` for prebuilt responsive variants; the room-page
+  Worker must not depend on runtime `/_image` transformations.
 - Reserve the top level of `/_astro/` for fingerprinted build output. If an image
   encoder upgrade needs to replace a cached image, change its source or transform
   so the generated URL changes.

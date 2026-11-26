@@ -862,7 +862,8 @@ export const ui = {
     "rooms.referenceRateBasis":
       "Tarifa Flexible base, por habitación y por noche. No es un mínimo ni una oferta para fechas concretas.",
     "rooms.referenceRateMissing": "Sin tarifa de referencia publicada.",
-    "rooms.referenceRateUnavailable": "Las tarifas de referencia no están disponibles en este momento.",
+    "rooms.referenceRateUnavailable":
+      "Las tarifas de referencia no están disponibles en este momento.",
     "rooms.searchGuide":
       "Parámetros de búsqueda: checkIn y checkOut son AAAA-MM-DD. adults y children son un número para una habitación. Varias habitaciones se escriben en orden, separadas por comas, por ejemplo adults=2,1&children=0,1. La cantidad de valores en adults es la cantidad de habitaciones. room, si está, solo sube esa habitación; no filtra ni la elige.",
     "rooms.liveOffers": "Ofertas para esta búsqueda",

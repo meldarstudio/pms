@@ -1,19 +1,20 @@
 import type { ImageMetadata } from "astro";
-import kingImage from "@/assets/highlights-room-photo.webp";
-import kingFrontViewImage from "@/assets/king-front-view.webp";
-import doubleSideImage from "@/assets/double-side-view.webp";
-import doubleTopImage from "@/assets/double-top-view.webp";
-import doubleCloseImage from "@/assets/double-close.webp";
-import familyFrontImage from "@/assets/family-room-front.webp";
-import familySideImage from "@/assets/family-room-side.webp";
-import familyCloseImage from "@/assets/family-room-close.webp";
-import kingBalconyImage from "@/assets/hero-image.webp";
+import kingImage from "@/assets/highlights-room-photo.webp?room-gallery";
+import kingFrontViewImage from "@/assets/king-front-view.webp?room-gallery";
+import doubleSideImage from "@/assets/double-side-view.webp?room-gallery";
+import doubleTopImage from "@/assets/double-top-view.webp?room-gallery";
+import doubleCloseImage from "@/assets/double-close.webp?room-gallery";
+import familyFrontImage from "@/assets/family-room-front.webp?room-gallery";
+import familySideImage from "@/assets/family-room-side.webp?room-gallery";
+import familyCloseImage from "@/assets/family-room-close.webp?room-gallery";
+import kingBalconyImage from "@/assets/hero-image.webp?room-gallery";
 import type { ui } from "@/i18n/ui";
 
 type UiKey = keyof (typeof ui)["en"];
 
 export type RoomPhoto = {
   src: ImageMetadata;
+  variants: { src: string; srcSet: string; sizes: string; full: string };
   altKey: UiKey;
 };
 
@@ -31,48 +32,21 @@ export type Room = {
   sleeps: number;
 };
 
-const kingPhoto: RoomPhoto = {
-  src: kingImage,
-  altKey: "rooms.photo.king",
-};
-const kingFrontViewPhoto: RoomPhoto = {
-  src: kingFrontViewImage,
-  altKey: "rooms.photo.kingFrontView",
-};
-const doubleSidePhoto: RoomPhoto = {
-  src: doubleSideImage,
-  altKey: "rooms.photo.doubleSide",
-};
-const doubleTopPhoto: RoomPhoto = {
-  src: doubleTopImage,
-  altKey: "rooms.photo.doubleTop",
-};
-const doubleClosePhoto: RoomPhoto = {
-  src: doubleCloseImage,
-  altKey: "rooms.photo.doubleClose",
-};
-const familyFrontPhoto: RoomPhoto = {
-  src: familyFrontImage,
-  altKey: "rooms.photo.familyFront",
-};
-const familySidePhoto: RoomPhoto = {
-  src: familySideImage,
-  altKey: "rooms.photo.familySide",
-};
-const familyClosePhoto: RoomPhoto = {
-  src: familyCloseImage,
-  altKey: "rooms.photo.familyClose",
-};
-const kingBalconyPhoto: RoomPhoto = {
-  src: kingBalconyImage,
-  altKey: "rooms.photo.kingBalcony",
-};
+const galleryPhoto = ({ original, ...variants }: typeof kingImage, altKey: UiKey): RoomPhoto => ({
+  src: original,
+  variants,
+  altKey,
+});
 
 export const rooms: Room[] = [
   {
     id: "king",
     pmsRoomTypeId: "935c7f23-8acc-4c78-b456-9bc588cccc2d",
-    gallery: [kingBalconyPhoto, kingFrontViewPhoto, kingPhoto],
+    gallery: [
+      galleryPhoto(kingBalconyImage, "rooms.photo.kingBalcony"),
+      galleryPhoto(kingFrontViewImage, "rooms.photo.kingFrontView"),
+      galleryPhoto(kingImage, "rooms.photo.king"),
+    ],
     nameKey: "rooms.king.name",
     leadKey: "rooms.king.lead",
     bedsKey: "rooms.king.beds",
@@ -83,7 +57,11 @@ export const rooms: Room[] = [
   {
     id: "double",
     pmsRoomTypeId: "a50f22a2-c02c-4cb1-ab98-e9da48f0228d",
-    gallery: [doubleSidePhoto, doubleTopPhoto, doubleClosePhoto],
+    gallery: [
+      galleryPhoto(doubleSideImage, "rooms.photo.doubleSide"),
+      galleryPhoto(doubleTopImage, "rooms.photo.doubleTop"),
+      galleryPhoto(doubleCloseImage, "rooms.photo.doubleClose"),
+    ],
     nameKey: "rooms.double.name",
     leadKey: "rooms.double.lead",
     bedsKey: "rooms.double.beds",
@@ -94,7 +72,11 @@ export const rooms: Room[] = [
   {
     id: "family",
     pmsRoomTypeId: "e93f440e-5546-45b3-8969-68a871d4ae81",
-    gallery: [familyFrontPhoto, familySidePhoto, familyClosePhoto],
+    gallery: [
+      galleryPhoto(familyFrontImage, "rooms.photo.familyFront"),
+      galleryPhoto(familySideImage, "rooms.photo.familySide"),
+      galleryPhoto(familyCloseImage, "rooms.photo.familyClose"),
+    ],
     nameKey: "rooms.family.name",
     leadKey: "rooms.family.lead",
     bedsKey: "rooms.family.beds",

@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { roomPagePaths } from "./room-page-paths.mjs";
 
 const site = "https://www.hotelmanantialchurin.com";
 const distDir = fileURLToPath(
@@ -15,6 +16,7 @@ const userAgent =
 
 const failures = [];
 const warnings = [];
+const onDemandPages = new Set(Object.values(roomPagePaths));
 
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -258,6 +260,7 @@ for (const [file, { links, ids: ownIds }] of pages) {
     }
 
     internalCount++;
+    if (onDemandPages.has(url.pathname)) continue;
     const resolved = await resolveLikeCloudflareAutoTrailingSlash(url.pathname);
     if (!resolved) {
       fail(raw, `no built file for ${url.pathname}`);

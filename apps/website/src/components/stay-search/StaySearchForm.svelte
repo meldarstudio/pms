@@ -56,8 +56,7 @@
   const datePopup = createPopoverController<DateField>();
   const guestPopup = createPopoverController();
   const wide = new MediaQuery(wideScreen, true);
-  const openedSearch = initial;
-  let search = $state(openedSearch ? shownSearch(openedSearch) : { ...initialSearch });
+  let search = $state(untrack(() => shownSearch(initial ?? initialSearch)));
   let ready = $state(false);
   let picker = $state<DatePicker>();
   let month = $state<string>();
@@ -80,7 +79,7 @@
   }
 
   onMount(() => {
-    search = restoreSearch(roomIds);
+    if (!initial) search = restoreSearch(roomIds);
     ready = true;
   });
 
@@ -149,10 +148,11 @@
   {action}
   method="get"
   novalidate
-  aria-busy={!ready}
+  aria-busy={!ready && !guide}
   onsubmit={submit}
 >
-  <fieldset class="lp-fields" disabled={!ready}>
+  <fieldset class="lp-fields" disabled={!ready && !guide}>
+    {#if ready || !guide}
     <Popover controller={datePopup} presentation={mobile ? "sheet" : "popover"}>
       {#each dateFields as field (field)}
         {@const id = dateId(field)}
@@ -344,40 +344,43 @@
         </PopoverContent>
       </Popover>
     </div>
+    {/if}
+    {#if guide}
+      {#each dateFields as field (field)}
+        <div class="lp-field" hidden={ready}>
+          <label for={`native-${field}`}>{copy[field]}</label>
+          <input
+            class="lp-native"
+            id={`native-${field}`}
+            type="date"
+            name={field}
+            value={search[field]}
+          />
+        </div>
+      {/each}
+      {#each guestFields as { name } (name)}
+        <div class="lp-field" hidden={ready}>
+          <label for={`native-${name}`}>{copy[name]}</label>
+          <input
+            class="lp-native"
+            id={`native-${name}`}
+            type="text"
+            {name}
+            autocomplete="off"
+            value={search.requests.map((request) => request[name]).join(",")}
+          />
+        </div>
+      {/each}
+    {:else}
+      {#each dateFields as field (field)}
+        <input type="hidden" name={field} value={search[field]} />
+      {/each}
+      {#each guestFields as { name } (name)}
+        <input type="hidden" {name} value={search.requests.map((request) => request[name]).join(",")} />
+      {/each}
+    {/if}
     <button type="submit" class="lp-submit">{copy.submit}</button>
   </fieldset>
-  <div class="stay-search-parameters">
-    {#each dateFields as field (field)}
-      <label>
-        {field}
-        <input type="date" name={field} bind:value={search[field]} />
-      </label>
-    {/each}
-    {#each guestFields as guest (guest.name)}
-      <label>
-        {guest.name}
-        <input
-          type="text"
-          name={guest.name}
-          inputmode="numeric"
-          autocomplete="off"
-          value={search.requests.map((request) => request[guest.name]).join(",")}
-          oninput={(event) => {
-            const parts = event.currentTarget.value.split(",");
-            const length =
-              guest.name === "adults" ? Math.max(parts.length, 1) : search.requests.length;
-            search.requests = Array.from({ length }, (_, index) => {
-              const current = search.requests[index] ?? newRoomRequest();
-              const parsed = Number(parts[index]);
-              const fallback = guest.name === "adults" ? 1 : 0;
-              const amount = Number.isInteger(parsed) && parsed >= guest.min ? parsed : fallback;
-              return { ...current, [guest.name]: amount };
-            });
-          }}
-        />
-      </label>
-    {/each}
-    {#if guide}<p>{guide}</p>{/if}
-  </div>
+  {#if guide}<p class="lp-search-guide">{guide}</p>{/if}
   <p class="sr-only" role="status" aria-atomic="true">{announcement}</p>
 </form>

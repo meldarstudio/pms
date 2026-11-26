@@ -2,9 +2,9 @@
   import BookingSteps from "@/components/reservation/BookingSteps.svelte";
   import { occupancySummary } from "@/components/stay-search/stay-search";
   import { getWhatsAppLink } from "@/lib/constants";
-  import { fill, formatMoney } from "@/lib/reservation/format";
-  import { lowestOffer } from "@/lib/reservation/offers";
-  import { ratesOpen, type RatePlanCode, type StaySearch } from "@/lib/reservation/search";
+  import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
+  import { lowestOffer, type PlanOffer } from "@/lib/reservation/offers";
+  import { firstOpenRequest, ratesOpen, type RatePlanCode, type StaySearch } from "@/lib/reservation/search";
   import { roomChoice, stayRates, type OffersFor } from "@/lib/reservation/stay-draft";
   import type { RoomId } from "@/lib/rooms";
   import RoomCard from "./RoomCard.svelte";
@@ -38,10 +38,11 @@
     onChangeRoom,
     onPlan,
     referenceAmounts,
-  }: Omit<RoomsBookingProps, "apiBase" | "action" | "initialStay" | "settled" | "referenceRates"> & {
+  }: Pick<RoomsBookingProps, "lang" | "text" | "searchCopy" | "reviewHref" | "rooms" | "details"> & {
     phase: Phase;
-    draft: StaySearch | null;
+    draft: StaySearch;
     offersFor: OffersFor;
+    referenceAmounts: Partial<Record<RoomId, string>>;
     onChooseDates: () => void;
     onOpenRoom: (room: RoomId) => void;
     onContinue: () => void;
@@ -50,22 +51,24 @@
     onPlan: (plan: RatePlanCode) => void;
   } = $props();
 
-  const open = $derived(draft !== null && ratesOpen(draft));
+  const open = $derived(ratesOpen(draft));
   const ratesLoading = $derived(phase.kind === "loading" && open);
   const rates = $derived(
-    draft && open ? stayRates(draft, offersFor).sort((a, b) => a.totalCents - b.totalCents) : [],
+    phase.kind === "found" && firstOpenRequest(draft.requests) === draft.requests.length
+      ? stayRates(draft, offersFor).sort((a, b) => a.totalCents - b.totalCents)
+      : [],
   );
-  const selected = $derived(rates.find((offer) => offer.ratePlan === draft?.plan) ?? rates[0]);
+  const selected = $derived(rates.find((offer) => offer.ratePlan === draft.plan) ?? rates[0]);
   const onRates = $derived(phase.kind === "found" && open && selected !== undefined);
   const chosen = $derived(
-    (draft?.requests ?? []).flatMap((request) => {
+    draft.requests.flatMap((request) => {
       const room = rooms.find((item) => item.id === request.room);
       return room ? [{ room, request }] : [];
     }),
   );
-  const total = $derived(draft?.requests.length ?? 1);
+  const total = $derived(draft.requests.length);
   const several = $derived(total > 1);
-  const at = $derived(draft?.at ?? 0);
+  const at = $derived(draft.at);
   const current = $derived(draft?.requests[at]);
   const last = $derived(at === total - 1);
   const chooseLabel = $derived(
@@ -74,15 +77,26 @@
   const canContinue = $derived(phase.kind === "found" && Boolean(current?.room && !current.failed));
 </script>
 
+{#snippet planTotals(offers: readonly PlanOffer[], currency: string)}
+  <dl class="text-sm text-stone-700">
+    {#each offers as offer (offer.ratePlan)}
+      <div class="flex justify-between gap-2">
+        <dt>{text[`reservation.plan.${offer.ratePlan}`]}</dt>
+        <dd class="font-semibold whitespace-nowrap">{formatMoney(offer.totalCents, currency)}</dd>
+      </div>
+    {/each}
+  </dl>
+{/snippet}
+
 <section class="bg-stone-100">
   <div class="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-8 md:px-8 md:py-12">
-    {#if phase.kind === "idle" || ratesLoading}
-      <div data-rate-loading class={ratesLoading ? undefined : "hidden"}>
+    {#if ratesLoading}
+      <div>
         <BookingSteps {text} current="rate" />
         <div class="mt-10" aria-busy="true"><RoomRateLoading {text} /></div>
       </div>
     {/if}
-    <div data-room-step hidden={ratesLoading} class="flex flex-col gap-10">
+    <div hidden={ratesLoading} class="flex flex-col gap-10">
       <BookingSteps
         id="offer-steps"
         class={belowHeader}
@@ -90,7 +104,7 @@
         current={onRates ? "rate" : "room"}
         {onChangeRoom}
       />
-      {#if onRates && draft && phase.kind === "found" && selected}
+      {#if onRates && phase.kind === "found" && selected}
         <RoomRateStep
           {lang}
           {text}
@@ -104,6 +118,23 @@
           {onPlan}
         />
       {:else}
+        {#if phase.kind === "found"}
+          <div>
+            <h2 class="text-xl font-semibold text-stone-900">{text["rooms.liveOffers"]}</h2>
+            <p class="mt-1 text-stone-700">
+              <time datetime={draft.checkIn}>{formatDate(draft.checkIn, lang, { includeWeekday: false })}</time>
+              –
+              <time datetime={draft.checkOut}>{formatDate(draft.checkOut, lang, { includeWeekday: false })}</time>
+              {#if !several && current}· {occupancySummary(searchCopy, current)}{/if}
+            </p>
+            {#if rates.length}
+              <div class="mt-3 max-w-sm">
+                <p class="font-semibold">{text["reservation.offer.total"]}</p>
+                {@render planTotals(rates, phase.result.currency)}
+              </div>
+            {/if}
+          </div>
+        {/if}
         {#if several && current}
           <div class="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -133,7 +164,7 @@
         <ul class="grid gap-6 md:grid-cols-2 lg:grid-cols-3" aria-busy={phase.kind === "loading"}>
           {#each rooms as item (item.id)}
             {@const offers = offersFor(item.id)}
-            {@const choice = draft ? roomChoice(draft, at, item.id, offersFor) : "offline"}
+            {@const choice = roomChoice(draft, at, item.id, offersFor)}
             {@const floor = phase.kind === "found" ? lowestOffer(offers) : undefined}
             {@const marked = several && current?.room === item.id}
             <li>
@@ -176,12 +207,15 @@
                       <button type="button" disabled class={unavailable}>
                         {text["reservation.room.tooManyGuests"]}
                       </button>
-                    {:else if choice === "choosable" && floor}
+                    {:else if choice === "choosable" && floor && offers}
                       <p class="text-sm text-stone-600">{text["reservation.rate.from"]}</p>
                       <p class="text-3xl font-semibold text-stone-900">
                         {formatMoney(floor.totalCents, phase.result.currency)}
                       </p>
                       <p class="mt-1 text-sm text-stone-600">{totalLine(phase, text)}</p>
+                      <div class="mt-3">
+                        {@render planTotals(offers.offers, phase.result.currency)}
+                      </div>
                       <button
                         id={`room-rates-${item.id}`}
                         type="button"
@@ -211,6 +245,33 @@
             </li>
           {/each}
         </ul>
+        {#if phase.kind === "found"}
+          {#each draft.requests as request, index (index)}
+            {#if index !== at && (!request.room || request.failed)}
+              <section class="border-t border-stone-300 pt-4">
+                <h3 class="font-semibold">{fill(text["reservation.room.sequence"], { n: index + 1, total })}</h3>
+                <p class="mt-1 text-sm text-stone-700">{occupancySummary(searchCopy, request)}</p>
+                <ul class="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {#each rooms as item (item.id)}
+                    {@const choice = roomChoice(draft, index, item.id, offersFor)}
+                    {@const offers = offersFor(item.id)}
+                    {#if choice === "choosable" && offers}
+                      <li class="border border-stone-200 bg-white p-3">
+                        <p class="mb-1 font-semibold">{item.name}</p>
+                        {@render planTotals(offers.offers, phase.result.currency)}
+                      </li>
+                    {:else if choice === "sold_out"}
+                      <li class="border border-stone-200 bg-white p-3">
+                        <p class="font-semibold">{item.name}</p>
+                        <p class="text-sm text-stone-700">{text["reservation.room.soldOut"]}</p>
+                      </li>
+                    {/if}
+                  {/each}
+                </ul>
+              </section>
+            {/if}
+          {/each}
+        {/if}
       {/if}
     </div>
   </div>

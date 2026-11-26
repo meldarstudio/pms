@@ -1,6 +1,6 @@
 ---
 import RoomsBookingIsland from "@/components/rooms/RoomsBooking.svelte";
-import type { RoomView, StayDetails } from "@/components/rooms/room-view";
+import type { RoomView, RoomsBookingProps, StayDetails } from "@/components/rooms/room-view";
 import { roomsBookingText } from "@/components/rooms/text";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { hotelServices, roomAmenities, type StayDetailId } from "@/lib/included";
@@ -9,9 +9,6 @@ import { getRelativeLocaleUrl } from "astro:i18n";
 import { formatMoney } from "@/lib/reservation/format";
 import { reviewStepHref } from "@/lib/reservation/links";
 import { loadRoomPage } from "@/lib/reservation/room-page";
-import { ratePlanCodes } from "@/lib/reservation/search";
-import { roomChoice } from "@/lib/reservation/stay-draft";
-import { occupancySummary } from "@/components/stay-search/stay-search";
 import { staySearchCopy } from "@/lib/reservation/stay-copy";
 import { rooms } from "@/lib/rooms";
 
@@ -20,39 +17,21 @@ const t = useTranslations(lang);
 Astro.response.headers.set("Cache-Control", "private, no-store");
 Astro.response.headers.set("CDN-Cache-Control", "no-store");
 const connectingIp = Astro.request.headers.get("cf-connecting-ip");
-const loaded = await loadRoomPage(
-  Astro.url,
-  PUBLIC_PMS_API_URL,
-  connectingIp,
-  Astro.request.headers.get("x-pms-offer-read"),
-);
-const referenceRates = {
-  currency: loaded.reference.kind === "found" ? loaded.reference.result.currency : "PEN",
-  unavailable: loaded.reference.kind !== "found",
-  byType: Object.fromEntries(
-    loaded.reference.kind === "found"
-      ? loaded.reference.result.roomTypes.map((type) => [type.id, type.baseRateCents])
-      : [],
-  ),
-};
-const referenceAmount = (id: (typeof rooms)[number]["id"]) => {
-  const cents = rooms.find((room) => room.id === id)?.pmsRoomTypeId
-    ? referenceRates.byType[rooms.find((room) => room.id === id)!.pmsRoomTypeId!]
-    : undefined;
-  return referenceRates.unavailable || cents === undefined
-    ? null
-    : formatMoney(cents, referenceRates.currency);
-};
-const referenceAmounts = {
-  king: referenceAmount("king"),
-  double: referenceAmount("double"),
-  family: referenceAmount("family"),
-};
-const offerResult = loaded.outcome?.kind === "found" ? loaded.outcome.result : null;
-const offersFor = (id: (typeof rooms)[number]["id"]) => {
-  const typeId = rooms.find((room) => room.id === id)?.pmsRoomTypeId;
-  return offerResult?.roomTypes.find((type) => type.id === typeId);
-};
+const { initial, reference } = await loadRoomPage(Astro.url, PUBLIC_PMS_API_URL, connectingIp);
+let referenceRates: RoomsBookingProps["referenceRates"] = { kind: "unavailable" };
+if (reference.kind === "found") {
+  const { currency, roomTypes } = reference.result;
+  const byType = new Map(roomTypes.map(({ id, baseRateCents }) => [id, baseRateCents]));
+  referenceRates = {
+    kind: "found",
+    amounts: Object.fromEntries(
+      rooms.flatMap((room) => {
+        const cents = room.pmsRoomTypeId && byType.get(room.pmsRoomTypeId);
+        return typeof cents === "number" ? [[room.id, formatMoney(cents, currency)]] : [];
+      }),
+    ),
+  };
+}
 const searchCopy = staySearchCopy(t, t("reservation.search.submit"));
 const views: RoomView[] = rooms.map((room) => ({
   id: room.id,
@@ -62,13 +41,10 @@ const views: RoomView[] = rooms.map((room) => ({
   sleeps: room.sleeps,
   pmsRoomTypeId: room.pmsRoomTypeId ?? null,
   photos: room.gallery.map((photo) => ({
-    src: photo.src.src,
-    srcSet: "",
-    sizes: "",
+    ...photo.variants,
     width: photo.src.width,
     height: photo.src.height,
     alt: t(photo.altKey),
-    full: photo.src.src,
   })),
 }));
 const translate = (items: readonly { id: StayDetailId; labelKey: Parameters<typeof t>[0] }[]) =>
@@ -79,118 +55,21 @@ const details: StayDetails = {
 };
 ---
 
-<div data-rooms-booking>
-  <script is:inline define:vars={{ roomIds: rooms.map((room) => room.id), ratePlanCodes }}>
-    {
-      const params = new URLSearchParams(window.location.search);
-      const booking = document.currentScript.parentElement;
-      if (params.get("checkIn") && params.get("checkOut")) {
-        booking.setAttribute("data-searched", "");
-        const requests = (params.get("adults") ?? "").split(",").length;
-        const types = (params.get("types") ?? "").split(",");
-        const everyRoomChosen =
-          types.length >= requests && types.slice(0, requests).every((id) => roomIds.includes(id));
-        if (
-          everyRoomChosen &&
-          !params.has("step") &&
-          !params.has("failed") &&
-          ratePlanCodes.includes(params.get("plan"))
-        ) {
-          booking.setAttribute("data-resume-rates", "");
-        }
-      }
-    }
-  </script>
-  <RoomsBookingIsland
-    client:load
-    lang={lang}
-    apiBase={PUBLIC_PMS_API_URL}
-    reviewHref={reviewStepHref(lang)}
-    rooms={views}
-    details={details}
-    text={roomsBookingText(t)}
-    searchCopy={searchCopy}
-    action={getRelativeLocaleUrl(lang, "habitaciones")}
-    initialStay={loaded.outcome ? loaded.search : null}
-    settled={loaded.outcome}
-    {referenceRates}
-    {referenceAmounts}
-  />
-  {
-    loaded.outcome?.kind === "invalid" && (
-      <h2 class="mx-auto max-w-7xl px-4 pt-6 text-xl font-semibold text-stone-900 md:px-8">
-        {t("reservation.choose.invalid.title")}
-      </h2>
-    )
-  }
-  {
-    loaded.outcome &&
-      loaded.outcome.kind !== "found" &&
-      loaded.outcome.kind !== "invalid" && (
-        <h2 class="mx-auto max-w-7xl px-4 pt-6 text-xl font-semibold text-stone-900 md:px-8">
-          {t("reservation.choose.unavailable.title")}
-        </h2>
-      )
-  }
-  {
-    offerResult &&
-      rooms.every(
-        (room) => roomChoice(loaded.search, loaded.search.at, room.id, offersFor) !== "choosable",
-      ) && (
-        <p id="rooms-notice" class="mx-auto max-w-7xl px-4 pt-6 font-semibold text-stone-900 md:px-8">
-          {t("reservation.choose.noOffers.title")}
-        </p>
-      )
-  }
-  {
-    offerResult && (
-      <section class="mx-auto max-w-7xl px-4 py-6 md:px-8" aria-label={t("rooms.liveOffers")}>
-        <h2 class="text-xl font-semibold text-stone-900">{t("rooms.liveOffers")}</h2>
-        <p class="mt-2 text-stone-700">
-          <time datetime={loaded.search.checkIn}>{loaded.search.checkIn}</time>
-          –
-          <time datetime={loaded.search.checkOut}>{loaded.search.checkOut}</time>
-          {
-            loaded.search.requests
-              .map((request) => occupancySummary(searchCopy, request))
-              .join("; ")
-          }
-        </p>
-        <ul class="mt-3 flex flex-col gap-1">
-          {
-            rooms.flatMap((room) =>
-              roomChoice(loaded.search, loaded.search.at, room.id, offersFor) === "choosable"
-                ? (offersFor(room.id)?.offers ?? []).map((offer) => (
-                    <li>
-                      {t(room.nameKey)}, {t(`reservation.plan.${offer.ratePlan}`)}:
-                      {formatMoney(offer.totalCents, offerResult.currency)}
-                    </li>
-                  ))
-                : [],
-            )
-          }
-        </ul>
-      </section>
-    )
-  }
-</div>
+<RoomsBookingIsland
+  client:load
+  lang={lang}
+  apiBase={PUBLIC_PMS_API_URL}
+  reviewHref={reviewStepHref(lang)}
+  rooms={views}
+  details={details}
+  text={roomsBookingText(t)}
+  searchCopy={searchCopy}
+  action={getRelativeLocaleUrl(lang, "habitaciones")}
+  {initial}
+  {referenceRates}
+/>
 
 <style is:global>
-  [data-rooms-booking][data-resume-rates] [data-room-step] {
-    display: none;
-  }
-  [data-rooms-booking][data-resume-rates] [data-rate-loading] {
-    display: block;
-  }
-  [data-rooms-booking][data-searched] [data-search-status] {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
   @media (width < 48rem) {
     body:has([data-continue-bar]) {
       padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
