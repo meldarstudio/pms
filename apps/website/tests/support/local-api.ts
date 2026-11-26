@@ -30,3 +30,8 @@ export const doubleSoldOutStay = () => ({
 });
 
 export const allSoldOutStay = () => ({ checkIn: daysFromToday(140), checkOut: daysFromToday(141) });
+
+export const unavailableStay = () => ({
+  checkIn: daysFromToday(210),
+  checkOut: daysFromToday(212),
+});

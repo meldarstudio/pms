@@ -1,14 +1,18 @@
 # Website
 
-Static Astro site for Hotel Manantial in Churín, Peru. Cloudflare serves `dist/`.
+Astro site for Hotel Manantial in Churín, Peru. The Spanish and English room pages render
+on demand; every other page is prerendered. Cloudflare serves the Worker and its static assets.
 `PUBLIC_PMS_API_URL` is required; `.env.development` supplies the local backend URL, and the
 release workflow supplies the production URL.
 
 ## Booking flow
 
-- Choose is `/habitaciones/`, one Svelte island (`src/components/rooms/RoomsBooking.svelte`).
-  Rooms are prerendered; live offers come from the PMS `/public` API at runtime, never in the HTML.
-  `src/lib/rooms.ts` links each room to a PMS room-type ID.
+- Choose: `src/middleware.ts` loads dated offers into `Astro.locals.roomPage` and sets browser
+  and CDN no-store headers. Keep the offer read on the request path so the first HTML includes
+  prices. Undated pages prompt for dates without fetching prices. Forward `cf-connecting-ip`
+  for the visitor's offer limit; keep the limit if Cloudflare overwrites the header on the API subrequest.
+- `src/components/rooms/RoomsBooking.svelte` renders Choose; `src/lib/rooms.ts` maps cards
+  to PMS room-type IDs.
 - Review is `/reservar/revisar/`, one Svelte island (`src/components/reservation/review/Review.svelte`).
   Its checkout and payment decisions live in the pure `src/lib/reservation/checkout-flow.ts`
   (`next(state, event)` returns the next state and effects); `checkout-runner.ts` performs the
@@ -38,13 +42,13 @@ metadata, and structured data.
 Run commands from the repository root with `pnpm --filter @pms/website`.
 
 - Run `verify:build` for pages, assets, configuration, or translations. It checks
-  locale parity, canonical URLs, redirects, sitemap entries, and the share image.
+  static page metadata, locale parity, Worker routing, redirects, the sitemap, and the share image.
 - Run `test:smoke` for stay search, Review, payment, or the complaint form.
   Manually check mobile menu changes. Smoke runs against a local API that
   `scripts/local-api.mjs` starts with the backend's `cf dev` and a seeded D1 in
   `.local-api/`; Culqi, Culqi3DS and Turnstile are stubbed (`tests/support/payment.ts`,
   `scripts/fake-payment-services.mjs`). It never calls production.
-- Run `exec node scripts/check-links.mjs` against a fresh build for link changes.
+- Run `exec node scripts/check-links.mjs` against a fresh build for static link changes.
   Add `--internal-only` to skip external requests.
 - Install the test browser with `exec playwright install chromium` when needed.
 
@@ -52,8 +56,8 @@ Keep `astro-check` and `svelte-check` isolated on TypeScript 6 through the works
 package extensions. They need the programmatic API unavailable in the workspace's
 TypeScript 7. Run `astro-check` directly because Astro's wrapper rejects TypeScript 7.
 
-For an authorized deployment, pass `./dist` to `cf deploy`; without the directory,
-`cf` would try to build the Astro project itself.
+For an authorized deployment, run the website `deploy` script. It builds the Worker that
+serves the two room routes and the static assets. Do not deploy `./dist` as assets only.
 
 ## Routes and translations
 
@@ -78,6 +82,8 @@ the English 404 page to `dist/en/404.html` for Cloudflare.
 - `src/components/Footer.astro`: Libro de Reclamaciones link and Annex III notice.
   For complaint disclosures, use `@pms/shared/complaint-book.json` in `src/components/complaints/`.
 - Import images from `src/assets` and use `astro:assets` `Image` or `Picture` with `layout`.
+  Room gallery imports use `?room-gallery` for prebuilt responsive variants; the room-page
+  Worker must not depend on runtime `/_image` transformations.
 - Reserve the top level of `/_astro/` for fingerprinted build output. If an image
   encoder upgrade needs to replace a cached image, change its source or transform
   so the generated URL changes.

@@ -22,7 +22,6 @@ import {
   stubPaymentScripts,
   useOwnSourceIp,
 } from "../support/payment";
-import { selectRoomRate } from "../support/room-rate";
 
 declare global {
   interface Window {
@@ -98,7 +97,6 @@ test("the complete English Non-refundable journey sends its saved confirmation a
     children: "0",
   });
   await page.goto(`/en/habitaciones/?${stay.toString()}`);
-  await selectRoomRate(page, "King room", "Non-refundable");
   await page.getByRole("link", { name: "Continue with King room, Non-refundable rate" }).click();
   await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s180\.00/);
   await expect(page.locator('[data-amount="now"]')).toHaveText(/S\/\s180\.00/);
@@ -172,14 +170,19 @@ test("a two-room Flexible stay is chosen room by room and paid once as one reser
     children: "0,1",
   });
   await page.goto(`/habitaciones/?${stay.toString()}`);
-  await expect(page.getByRole("heading", { name: "Habitación 1 de 2" })).toBeVisible();
+  await expect(page.locator("#stay-check-in")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Habitación 1 de 2", level: 2 })).toBeVisible();
   await page
     .getByRole("article", { name: "Suite Matrimonial" })
     .getByRole("button", { name: "Elegir esta habitación" })
     .click();
-  await expect(page.getByRole("heading", { name: "Habitación 2 de 2" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Habitación 2 de 2", level: 2 })).toBeVisible();
   await expect(page.getByRole("radio", { name: /Flexible/ })).toHaveCount(0);
-  await selectRoomRate(page, "Doble Premium", "Flexible");
+  await page
+    .getByRole("article", { name: "Doble Premium" })
+    .getByRole("button", { name: "Ver tarifas" })
+    .click();
+  await page.getByRole("radio", { name: /Flexible/ }).check();
   const summary = page.getByRole("complementary", { name: "Su estadía" });
   await expect(summary).toContainText("Suite Matrimonial");
   await expect(summary).toContainText("Doble Premium");

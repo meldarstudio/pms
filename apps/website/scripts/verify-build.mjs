@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { readFile, readdir, stat } from "node:fs/promises";
+import { roomPagePaths } from "./room-page-paths.mjs";
 
 const site = "https://www.hotelmanantialchurin.com";
 const root = new URL("../", import.meta.url);
-const dist = new URL("../dist/", import.meta.url);
+const dist = new URL("../.cloudflare/output/v1/workers/default/assets/", import.meta.url);
+const worker = JSON.parse(await read(dist, "../worker.config.json"));
+const onDemandUrls = new Set(Object.values(roomPagePaths).map((path) => `${site}${path}`));
+
+assert.deepEqual(
+  new Set(worker.assets.runWorkerFirst),
+  new Set(Object.values(roomPagePaths).flatMap((path) => [path.slice(0, -1), `${path}*`])),
+  "Only room pages should route browser navigations to the Worker",
+);
 
 async function read(base, path) {
   return readFile(new URL(path, base), "utf8");
@@ -83,17 +92,23 @@ for (const file of spanishPages) {
 
   let noIndex = false;
   for (const lang of ["es", "en"]) {
-    const html = await read(dist, `${lang === "en" ? "en/" : ""}${output}`);
+    const pathname = new URL(urls[lang]).pathname;
+    if (slug !== "404" && pathname !== "/") {
+      expectedRedirects.push(`${pathname.slice(0, -1)} ${pathname} 301`);
+    }
+    const file = `${lang === "en" ? "en/" : ""}${output}`;
+    if (onDemandUrls.has(urls[lang])) {
+      await assert.rejects(read(dist, file), { code: "ENOENT" });
+      sitemapUrls.add(urls[lang]);
+      continue;
+    }
+    const html = await read(dist, file);
     checkPage(html, lang, urls, slug === "404");
     for (const [, href] of html.matchAll(/<a\b[^>]*\bhref="(\/[^"]*)"/g)) {
       assert.ok(
         new URL(href, site).pathname.endsWith("/"),
         `Internal link needs a trailing slash: ${href} in ${lang} ${slug}`,
       );
-    }
-    const pathname = new URL(urls[lang]).pathname;
-    if (slug !== "404" && pathname !== "/") {
-      expectedRedirects.push(`${pathname.slice(0, -1)} ${pathname} 301`);
     }
     const head = html.split("</head>")[0];
     const pageNoIndex = /<meta name="robots" content="[^"]*noindex/.test(head);
@@ -204,21 +219,6 @@ for (const lang of ["es", "en"]) {
   assert.ok(
     URL.canParse(copy.apiBase),
     `The ${lang} reservation-summary step needs an absolute API URL`,
-  );
-  const rooms = await read(dist, `${prefix}habitaciones/index.html`);
-  assert.ok(
-    rooms.includes('id="availability"') && rooms.includes("<astro-island"),
-    `The ${lang} rooms page needs its date search`,
-  );
-  for (const room of ["king", "double", "family"])
-    assert.ok(
-      rooms.includes(`id="room-${room}-name"`),
-      `The ${lang} rooms page must prerender the ${room} room for search engines`,
-    );
-  assert.doesNotMatch(
-    rooms,
-    /minPrice|priceRange|S\/\s?\d/,
-    `${lang} rooms page must not state fixed prices`,
   );
 }
 

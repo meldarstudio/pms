@@ -1,61 +1,34 @@
 ---
-import { getImage } from "astro:assets";
 import RoomsBookingIsland from "@/components/rooms/RoomsBooking.svelte";
 import type { RoomView, StayDetails } from "@/components/rooms/room-view";
 import { roomsBookingText } from "@/components/rooms/text";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { hotelServices, roomAmenities, type StayDetailId } from "@/lib/included";
 import { PUBLIC_PMS_API_URL } from "astro:env/client";
+import { getRelativeLocaleUrl } from "astro:i18n";
 import { reviewStepHref } from "@/lib/reservation/links";
-import { ratePlanCodes } from "@/lib/reservation/search";
 import { staySearchCopy } from "@/lib/reservation/stay-copy";
 import { rooms } from "@/lib/rooms";
 
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
-const photoSizes =
-  "(min-width: 80rem) 25rem, (min-width: 64rem) 32vw, (min-width: 48rem) 48vw, 100vw";
-const photoWidths = [480, 720, 960, 1280];
-
-const views: RoomView[] = await Promise.all(
-  rooms.map(async (room) => ({
-    id: room.id,
-    name: t(room.nameKey),
-    beds: t(room.bedsKey),
-    area: t(room.areaKey),
-    sleeps: room.sleeps,
-    pmsRoomTypeId: room.pmsRoomTypeId ?? null,
-    photos: await Promise.all(
-      room.gallery.map(async (photo) => {
-        const widths = photoWidths.filter((width) => width <= photo.src.width);
-        const [card, full] = await Promise.all([
-          getImage({
-            src: photo.src,
-            width: widths.at(-1) ?? photo.src.width,
-            widths,
-            sizes: photoSizes,
-            format: "webp",
-          }),
-          getImage({
-            src: photo.src,
-            width: Math.min(photo.src.width, 2400),
-            format: "webp",
-            quality: 85,
-          }),
-        ]);
-        return {
-          src: card.src,
-          srcSet: card.srcSet.attribute,
-          sizes: photoSizes,
-          width: photo.src.width,
-          height: photo.src.height,
-          alt: t(photo.altKey),
-          full: full.src,
-        };
-      }),
-    ),
+const { roomPage } = Astro.locals;
+if (!roomPage) throw new Error("Room booking requires room page middleware data");
+const searchCopy = staySearchCopy(t, t("reservation.search.submit"));
+const views: RoomView[] = rooms.map((room) => ({
+  id: room.id,
+  name: t(room.nameKey),
+  beds: t(room.bedsKey),
+  area: t(room.areaKey),
+  sleeps: room.sleeps,
+  pmsRoomTypeId: room.pmsRoomTypeId ?? null,
+  photos: room.gallery.map((photo) => ({
+    ...photo.variants,
+    width: photo.src.width,
+    height: photo.src.height,
+    alt: t(photo.altKey),
   })),
-);
+}));
 const translate = (items: readonly { id: StayDetailId; labelKey: Parameters<typeof t>[0] }[]) =>
   items.map((item) => ({ id: item.id, label: t(item.labelKey) }));
 const details: StayDetails = {
@@ -64,56 +37,20 @@ const details: StayDetails = {
 };
 ---
 
-<div data-rooms-booking>
-  <script is:inline define:vars={{ roomIds: rooms.map((room) => room.id), ratePlanCodes }}>
-    {
-      const params = new URLSearchParams(window.location.search);
-      const booking = document.currentScript.parentElement;
-      if (params.get("checkIn") && params.get("checkOut")) {
-        booking.setAttribute("data-searched", "");
-        const requests = (params.get("adults") ?? "").split(",").length;
-        const types = (params.get("types") ?? "").split(",");
-        const everyRoomChosen =
-          types.length >= requests && types.slice(0, requests).every((id) => roomIds.includes(id));
-        if (
-          everyRoomChosen &&
-          !params.has("step") &&
-          !params.has("failed") &&
-          ratePlanCodes.includes(params.get("plan"))
-        ) {
-          booking.setAttribute("data-resume-rates", "");
-        }
-      }
-    }
-  </script>
-  <RoomsBookingIsland
-    client:load
-    lang={lang}
-    apiBase={PUBLIC_PMS_API_URL}
-    reviewHref={reviewStepHref(lang)}
-    rooms={views}
-    details={details}
-    text={roomsBookingText(t)}
-    searchCopy={staySearchCopy(t, t("reservation.search.submit"))}
-  />
-</div>
+<RoomsBookingIsland
+  client:load
+  lang={lang}
+  apiBase={PUBLIC_PMS_API_URL}
+  reviewHref={reviewStepHref(lang)}
+  rooms={views}
+  details={details}
+  text={roomsBookingText(t)}
+  searchCopy={searchCopy}
+  action={getRelativeLocaleUrl(lang, "habitaciones")}
+  initial={roomPage}
+/>
 
 <style is:global>
-  [data-rooms-booking][data-resume-rates] [data-room-step] {
-    display: none;
-  }
-  [data-rooms-booking][data-resume-rates] [data-rate-loading] {
-    display: block;
-  }
-  [data-rooms-booking][data-searched] [data-search-status] {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
   @media (width < 48rem) {
     body:has([data-continue-bar]) {
       padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));

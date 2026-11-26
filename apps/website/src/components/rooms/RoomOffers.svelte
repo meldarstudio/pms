@@ -2,13 +2,21 @@
   import BookingSteps from "@/components/reservation/BookingSteps.svelte";
   import { occupancySummary } from "@/components/stay-search/stay-search";
   import { getWhatsAppLink } from "@/lib/constants";
-  import { fill, formatMoney } from "@/lib/reservation/format";
-  import { lowestOffer } from "@/lib/reservation/offers";
-  import { ratesOpen, type RatePlanCode, type StaySearch } from "@/lib/reservation/search";
-  import { roomChoice, stayRates, type OffersFor } from "@/lib/reservation/stay-draft";
+  import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
+  import type { PlanOffer } from "@/lib/reservation/offers";
+  import {
+    firstOpenRequest,
+    ratesOpen,
+    searchParams,
+    type RatePlanCode,
+    type StaySearch,
+  } from "@/lib/reservation/search";
+  import { chooseRoom, roomChoice, stayRates, type OffersFor } from "@/lib/reservation/stay-draft";
   import type { RoomId } from "@/lib/rooms";
   import RoomCard from "./RoomCard.svelte";
   import RoomIcon from "./RoomIcon.svelte";
+  import RoomRateCancellation from "./RoomRateCancellation.svelte";
+  import RoomRatePayments from "./RoomRatePayments.svelte";
   import RoomRateStep from "./RoomRateStep.svelte";
   import RoomRateLoading from "./RoomRateLoading.svelte";
   import {
@@ -18,6 +26,7 @@
     unavailable,
     type Phase,
     type RoomsBookingProps,
+    type RoomView,
   } from "./room-view";
   import { totalLine } from "./room-rate";
 
@@ -37,9 +46,9 @@
     onPrevious,
     onChangeRoom,
     onPlan,
-  }: Omit<RoomsBookingProps, "apiBase"> & {
+  }: Pick<RoomsBookingProps, "lang" | "text" | "searchCopy" | "reviewHref" | "rooms" | "details"> & {
     phase: Phase;
-    draft: StaySearch | null;
+    draft: StaySearch;
     offersFor: OffersFor;
     onChooseDates: () => void;
     onOpenRoom: (room: RoomId) => void;
@@ -49,47 +58,103 @@
     onPlan: (plan: RatePlanCode) => void;
   } = $props();
 
-  const open = $derived(draft !== null && ratesOpen(draft));
+  const total = $derived(draft.requests.length);
+  const several = $derived(total > 1);
+  const open = $derived(several && ratesOpen(draft));
   const ratesLoading = $derived(phase.kind === "loading" && open);
   const rates = $derived(
-    draft && open ? stayRates(draft, offersFor).sort((a, b) => a.totalCents - b.totalCents) : [],
+    several && phase.kind === "found" && firstOpenRequest(draft.requests) === total
+      ? stayRates(draft, offersFor).sort((a, b) => a.totalCents - b.totalCents)
+      : [],
   );
-  const selected = $derived(rates.find((offer) => offer.ratePlan === draft?.plan) ?? rates[0]);
+  const selected = $derived(rates.find((offer) => offer.ratePlan === draft.plan) ?? rates[0]);
   const onRates = $derived(phase.kind === "found" && open && selected !== undefined);
   const chosen = $derived(
-    (draft?.requests ?? []).flatMap((request) => {
+    draft.requests.flatMap((request) => {
       const room = rooms.find((item) => item.id === request.room);
       return room ? [{ room, request }] : [];
     }),
   );
-  const total = $derived(draft?.requests.length ?? 1);
-  const several = $derived(total > 1);
-  const at = $derived(draft?.at ?? 0);
-  const current = $derived(draft?.requests[at]);
+  const at = $derived(several ? draft.at : 0);
+  const current = $derived(draft.requests[at]);
   const last = $derived(at === total - 1);
-  const chooseLabel = $derived(
-    !several || last ? text["reservation.rate.see"] : text["reservation.room.choose"],
-  );
+  const chooseLabel = $derived(last ? text["reservation.rate.see"] : text["reservation.room.choose"]);
   const canContinue = $derived(phase.kind === "found" && Boolean(current?.room && !current.failed));
+  const rateCaption = $derived([
+    "mb-2 text-left text-sm",
+    several ? "text-stone-600" : "font-source-sans-3 font-semibold text-stone-800",
+  ]);
 </script>
+
+{#snippet planTotals(offers: readonly PlanOffer[], currency: string)}
+  <dl class="text-sm text-stone-700">
+    {#each offers as offer (offer.ratePlan)}
+      <div class="flex justify-between gap-2">
+        <dt>{text[`reservation.plan.${offer.ratePlan}`]}</dt>
+        <dd class="font-semibold whitespace-nowrap">{formatMoney(offer.totalCents, currency)}</dd>
+      </div>
+    {/each}
+  </dl>
+{/snippet}
+
+{#snippet singleRoomRates(room: RoomView, offers: readonly PlanOffer[], currency: string)}
+  {@const selection = chooseRoom({ ...draft, at: 0 }, room.id, offersFor)}
+  <ul class="font-source-sans-3 divide-y divide-stone-200 bg-stone-50">
+    {#each offers as offer (offer.ratePlan)}
+      {@const plan = text[`reservation.plan.${offer.ratePlan}`]}
+      {@const id = `room-${room.id}-${offer.ratePlan}`}
+      <li>
+        <a
+          class="block px-3 py-2.5 text-left hover:bg-accent-50 focus-visible:bg-accent-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-700"
+          href={`${reviewHref}?${searchParams({ ...selection, plan: offer.ratePlan })}`}
+          aria-label={fill(text["reservation.rate.continueLabel"], { room: room.name, plan })}
+          aria-describedby={`${id}-total ${id}-terms`}
+        >
+          <span class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2">
+            <span class="font-semibold text-accent-800">{plan}</span>
+            <span class="flex items-center gap-1.5">
+              <span
+                id={`${id}-total`}
+                class="text-xl leading-tight font-semibold whitespace-nowrap text-stone-900 tabular-nums"
+              >
+                {formatMoney(offer.totalCents, currency)}
+              </span>
+              <RoomIcon name="next" class="size-3.5 shrink-0 text-accent-800" />
+            </span>
+          </span>
+          <span
+            id={`${id}-terms`}
+            class="mt-1 block space-y-1 pr-5 text-sm leading-snug text-stone-700 tabular-nums"
+          >
+            <span class="block">
+              <RoomRateCancellation {offer} {text} {lang} {currency} includeWeekday={false} />
+            </span>
+            <RoomRatePayments {offer} {text} {currency} />
+          </span>
+        </a>
+      </li>
+    {/each}
+  </ul>
+{/snippet}
 
 <section class="bg-stone-100">
   <div class="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-8 md:px-8 md:py-12">
-    {#if phase.kind === "idle" || ratesLoading}
-      <div data-rate-loading class={ratesLoading ? undefined : "hidden"}>
+    {#if ratesLoading}
+      <div>
         <BookingSteps {text} current="rate" />
         <div class="mt-10" aria-busy="true"><RoomRateLoading {text} /></div>
       </div>
     {/if}
-    <div data-room-step hidden={ratesLoading} class="flex flex-col gap-10">
+    <div hidden={ratesLoading} class="flex flex-col gap-10">
       <BookingSteps
         id="offer-steps"
         class={belowHeader}
         {text}
+        singleRoom={!several}
         current={onRates ? "rate" : "room"}
         {onChangeRoom}
       />
-      {#if onRates && draft && phase.kind === "found" && selected}
+      {#if onRates && phase.kind === "found" && selected}
         <RoomRateStep
           {lang}
           {text}
@@ -103,6 +168,28 @@
           {onPlan}
         />
       {:else}
+        {#if phase.kind === "found"}
+          <div>
+            <h2 class="text-xl font-semibold text-stone-900">{text["rooms.liveOffers"]}</h2>
+            <p class="mt-1 text-stone-700">
+              <time datetime={draft.checkIn}>{formatDate(draft.checkIn, lang, { includeWeekday: false })}</time>
+              –
+              <time datetime={draft.checkOut}>{formatDate(draft.checkOut, lang, { includeWeekday: false })}</time>
+              {#if !several && current}· {occupancySummary(searchCopy, current)}{/if}
+            </p>
+            {#if !several}
+              <p class="mt-1 text-sm text-stone-600">
+                {fill(text["reservation.offer.taxes"], { currency: phase.result.currency })}
+              </p>
+            {/if}
+            {#if rates.length}
+              <div class="mt-3 max-w-sm">
+                <p class="font-semibold">{text["reservation.offer.total"]}</p>
+                {@render planTotals(rates, phase.result.currency)}
+              </div>
+            {/if}
+          </div>
+        {/if}
         {#if several && current}
           <div class="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -132,11 +219,16 @@
         <ul class="grid gap-6 md:grid-cols-2 lg:grid-cols-3" aria-busy={phase.kind === "loading"}>
           {#each rooms as item (item.id)}
             {@const offers = offersFor(item.id)}
-            {@const choice = draft ? roomChoice(draft, at, item.id, offersFor) : "offline"}
-            {@const floor = phase.kind === "found" ? lowestOffer(offers) : undefined}
+            {@const choice = roomChoice(draft, at, item.id, offersFor)}
             {@const marked = several && current?.room === item.id}
             <li>
-              <RoomCard room={item} {text} {details} {offers} {marked}>
+              <RoomCard
+                room={item}
+                {text}
+                {details}
+                {offers}
+                {marked}
+              >
                 <div class="text-right">
                   {#if phase.kind === "idle"}
                     <button type="button" class={`w-full ${secondary}`} onclick={onChooseDates}>
@@ -144,21 +236,20 @@
                       {text["reservation.room.chooseDates"]}
                     </button>
                   {:else if phase.kind === "loading"}
-                    <p class="text-sm text-stone-600">{text["reservation.rate.from"]}</p>
-                    <div class="text-3xl font-semibold">
-                      <div
-                        aria-hidden="true"
-                        class="ml-auto h-lh w-40 animate-pulse bg-stone-200 motion-reduce:animate-none"
-                      ></div>
+                    <p class={rateCaption}>{totalLine(phase, text)}</p>
+                    <div aria-hidden="true" class="space-y-3 motion-safe:animate-pulse">
+                      <div class={[several ? "h-4" : "h-20", "bg-stone-100"]}></div>
+                      <div class={[several ? "h-4" : "h-16", "bg-stone-100"]}></div>
                     </div>
-                    <p class="mt-1 text-sm text-stone-600">{totalLine(phase, text)}</p>
-                    <button
-                      type="button"
-                      disabled
-                      class={`mt-4 w-full ${primary} disabled:opacity-50`}
-                    >
-                      {chooseLabel}
-                    </button>
+                    {#if several}
+                      <button
+                        type="button"
+                        disabled
+                        class={`mt-4 w-full ${primary} disabled:opacity-50`}
+                      >
+                        {chooseLabel}
+                      </button>
+                    {/if}
                   {:else if phase.kind === "found"}
                     {#if choice === "sold_out"}
                       <button type="button" disabled class={unavailable}>
@@ -168,21 +259,29 @@
                       <button type="button" disabled class={unavailable}>
                         {text["reservation.room.tooManyGuests"]}
                       </button>
-                    {:else if choice === "choosable" && floor}
-                      <p class="text-sm text-stone-600">{text["reservation.rate.from"]}</p>
-                      <p class="text-3xl font-semibold text-stone-900">
-                        {formatMoney(floor.totalCents, phase.result.currency)}
-                      </p>
-                      <p class="mt-1 text-sm text-stone-600">{totalLine(phase, text)}</p>
-                      <button
-                        id={`room-rates-${item.id}`}
-                        type="button"
-                        class={`mt-4 w-full ${primary}`}
-                        aria-pressed={several ? marked : undefined}
-                        onclick={() => onOpenRoom(item.id)}
+                    {:else if choice === "choosable" && offers}
+                      <p
+                        id={several ? undefined : `room-rates-${item.id}`}
+                        class={rateCaption}
                       >
-                        {marked ? text["reservation.room.chosen"] : chooseLabel}
-                      </button>
+                        {totalLine(phase, text)}
+                      </p>
+                      {#if several}
+                        <div class="text-left">
+                          {@render planTotals(offers.offers, phase.result.currency)}
+                        </div>
+                        <button
+                          id={`room-rates-${item.id}`}
+                          type="button"
+                          class={`mt-4 w-full ${primary}`}
+                          aria-pressed={marked}
+                          onclick={() => onOpenRoom(item.id)}
+                        >
+                          {marked ? text["reservation.room.chosen"] : chooseLabel}
+                        </button>
+                      {:else}
+                        {@render singleRoomRates(item, offers.offers, phase.result.currency)}
+                      {/if}
                     {:else}
                       {@const [before, after] =
                         text["reservation.room.offline"].split("{whatsapp}")}
@@ -203,6 +302,33 @@
             </li>
           {/each}
         </ul>
+        {#if phase.kind === "found"}
+          {#each draft.requests as request, index (index)}
+            {#if index !== at && (!request.room || request.failed)}
+              <section class="border-t border-stone-300 pt-4">
+                <h3 class="font-semibold">{fill(text["reservation.room.sequence"], { n: index + 1, total })}</h3>
+                <p class="mt-1 text-sm text-stone-700">{occupancySummary(searchCopy, request)}</p>
+                <ul class="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {#each rooms as item (item.id)}
+                    {@const choice = roomChoice(draft, index, item.id, offersFor)}
+                    {@const offers = offersFor(item.id)}
+                    {#if choice === "choosable" && offers}
+                      <li class="border border-stone-200 bg-white p-3">
+                        <p class="mb-1 font-semibold">{item.name}</p>
+                        {@render planTotals(offers.offers, phase.result.currency)}
+                      </li>
+                    {:else if choice === "sold_out"}
+                      <li class="border border-stone-200 bg-white p-3">
+                        <p class="font-semibold">{item.name}</p>
+                        <p class="text-sm text-stone-700">{text["reservation.room.soldOut"]}</p>
+                      </li>
+                    {/if}
+                  {/each}
+                </ul>
+              </section>
+            {/if}
+          {/each}
+        {/if}
       {/if}
     </div>
   </div>

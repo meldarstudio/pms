@@ -68,6 +68,9 @@ function count(value: string | undefined, fallback: number, min: number) {
 
 const listParam = (params: URLSearchParams, name: string) => params.get(name)?.split(",") ?? [];
 
+export const hasStayDates = (params: URLSearchParams) =>
+  params.has("checkIn") || params.has("checkOut");
+
 export function readSearch(params: URLSearchParams, roomIds: readonly string[]): StaySearch {
   const checkIn = params.get("checkIn");
   const checkOut = params.get("checkOut");

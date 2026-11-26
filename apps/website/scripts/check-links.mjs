@@ -1,9 +1,12 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { roomPagePaths } from "./room-page-paths.mjs";
 
 const site = "https://www.hotelmanantialchurin.com";
-const distDir = fileURLToPath(new URL("../dist/", import.meta.url));
+const distDir = fileURLToPath(
+  new URL("../.cloudflare/output/v1/workers/default/assets/", import.meta.url),
+);
 const internalOnly =
   process.argv.includes("--internal-only") || process.env.LINKS_INTERNAL_ONLY === "1";
 const timeoutMs = 10_000;
@@ -13,6 +16,7 @@ const userAgent =
 
 const failures = [];
 const warnings = [];
+const onDemandPages = new Set(Object.values(roomPagePaths));
 
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -256,15 +260,16 @@ for (const [file, { links, ids: ownIds }] of pages) {
     }
 
     internalCount++;
+    if (onDemandPages.has(url.pathname)) continue;
     const resolved = await resolveLikeCloudflareAutoTrailingSlash(url.pathname);
     if (!resolved) {
-      fail(raw, `no file in dist/ for ${url.pathname}`);
+      fail(raw, `no built file for ${url.pathname}`);
       continue;
     }
     const target = resolved.file;
     if (resolved.redirect) {
       const servedAs = path.relative(distDir, target).split(path.sep).join("/");
-      warn(raw, `only resolves through a host redirect (serves dist/${servedAs})`);
+      warn(raw, `only resolves through a host redirect (serves ${servedAs})`);
     }
     const fragment = decodeURIComponent(url.hash.slice(1));
     if (fragment && fragment !== "top") {

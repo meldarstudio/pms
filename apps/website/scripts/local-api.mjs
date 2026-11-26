@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, request } from "node:http";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import cfPackage from "cf/package.json" with { type: "json" };
@@ -16,6 +17,7 @@ import {
   WEBSITE_URL,
   allSoldOutStay,
   doubleSoldOutStay,
+  unavailableStay,
 } from "../tests/support/local-api.ts";
 
 const backend = fileURLToPath(new URL("../../backend/", import.meta.url));
@@ -63,15 +65,44 @@ writeFileSync(
 const paymentServices = startFakePaymentServices(FAKE_PAYMENT_SERVICES_URL);
 
 const { hostname, port } = new URL(LOCAL_API_URL);
-const cfBin = fileURLToPath(new URL(cfPackage.bin.cf, import.meta.resolve("cf/package.json")));
-const server = spawn(process.execPath, [cfBin, "dev", "--", "--host", hostname, "--port", port], {
-  cwd: backend,
-  detached: process.platform !== "win32",
-  stdio: "inherit",
-  env: { ...process.env, PMS_LOCAL_API_DIR: workspace },
+const backendPort = Number(port) + 2;
+const unavailable = unavailableStay();
+const publicApi = createServer((req, res) => {
+  const url = new URL(req.url, LOCAL_API_URL);
+  if (
+    req.method === "GET" &&
+    url.pathname === "/public/offers" &&
+    url.searchParams.get("checkIn") === unavailable.checkIn &&
+    url.searchParams.get("checkOut") === unavailable.checkOut
+  ) {
+    res.writeHead(503, { "access-control-allow-origin": WEBSITE_URL }).end();
+    return;
+  }
+  const backendRequest = request(
+    { hostname, port: backendPort, path: req.url, method: req.method, headers: req.headers },
+    (response) => {
+      res.writeHead(response.statusCode, response.headers);
+      response.pipe(res);
+    },
+  );
+  backendRequest.on("error", () => res.writeHead(503).end());
+  req.pipe(backendRequest);
 });
+publicApi.listen(Number(port), hostname);
+const cfBin = fileURLToPath(new URL(cfPackage.bin.cf, import.meta.resolve("cf/package.json")));
+const server = spawn(
+  process.execPath,
+  [cfBin, "dev", "--", "--host", hostname, "--port", String(backendPort)],
+  {
+    cwd: backend,
+    detached: process.platform !== "win32",
+    stdio: "inherit",
+    env: { ...process.env, PMS_LOCAL_API_DIR: workspace },
+  },
+);
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.kill(signal));
 server.on("exit", (code) => {
+  publicApi.close();
   paymentServices.close();
   process.exit(code ?? 0);
 });

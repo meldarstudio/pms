@@ -17,6 +17,8 @@
     type StaySearch,
   } from "@/lib/reservation/search";
   import RoomIcon from "./RoomIcon.svelte";
+  import RoomRateCancellation from "./RoomRateCancellation.svelte";
+  import RoomRatePayments from "./RoomRatePayments.svelte";
   import { nightsOf, policyHeading, rateLayout, summaryLayout } from "./room-rate";
   import { primary, type Phase, type RoomView, type RoomsBookingProps } from "./room-view";
   import type { RoomsBookingKey } from "./text";
@@ -44,10 +46,8 @@
   const say = (key: RoomsBookingKey, values: Record<string, string | number> = {}) =>
     fill(text[key], values);
   const money = (cents: number) => formatMoney(cents, phase.result.currency);
+  const currency = $derived(phase.result.currency);
   const nights = $derived(nightsOf(phase, text));
-  const several = $derived(chosen.length > 1);
-  const room = $derived(chosen[0]!.room);
-  const guests = $derived(occupancySummary(searchCopy, chosen[0]!.request));
   const dates = $derived(
     `${formatDate(phase.search.checkIn, lang, { includeWeekday: false })} – ${formatDate(phase.search.checkOut, lang, { includeWeekday: false })}`,
   );
@@ -63,7 +63,6 @@
       plan: say(`reservation.plan.${selected.ratePlan}`),
     }),
   );
-  const photo = $derived(room.photos[0]);
   let summaryContinueInView = $state(false);
 
   function watchSummaryContinue(node: HTMLElement) {
@@ -79,43 +78,6 @@
     return () => observer.disconnect();
   }
 </script>
-
-{#snippet payments(offer: PlanOffer)}
-  <span class="flex flex-col gap-1 text-sm text-stone-600">
-    <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-      <span>{text["reservation.rate.due"]}</span>
-      <span class="ml-auto whitespace-nowrap">{money(offer.requiredInitialPaymentCents)}</span>
-    </span>
-    {#if offer.remainingScheduledCents > 0}
-      <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <span>{text["reservation.offer.remaining"]}</span>
-        <span class="ml-auto whitespace-nowrap">{money(offer.remainingScheduledCents)}</span>
-      </span>
-    {/if}
-  </span>
-{/snippet}
-
-{#snippet terms({ cancellation, savingCents }: PlanOffer)}
-  {#if cancellation.freeCancellation === "available" && cancellation.freeUntil}
-    {@const [before, after] = text["reservation.rate.freeUntil"].split("{date}")}
-    <span class="font-semibold text-green-800">
-      {before}<time datetime={cancellation.freeUntil}>
-        {formatDate(cancellation.freeUntil, lang)}
-      </time>{after}
-    </span>
-  {:else}
-    {text[
-      cancellation.freeCancellation === "ended"
-        ? "reservation.rate.freeEnded"
-        : "reservation.rate.noFree"
-    ]}
-  {/if}
-  {#if savingCents > 0}
-    · <span class="font-semibold text-green-800">
-      {say("reservation.rate.saving", { amount: money(savingCents) })}
-    </span>
-  {/if}
-{/snippet}
 
 {#snippet summaryRow(term: string, detail: string)}
   <div class="flex items-baseline justify-between gap-4">
@@ -147,9 +109,7 @@
   <p>
     {text[
       selected.ratePlan === "flexible"
-        ? several
-          ? "rooms.policies.cancelFlexibleBodyRooms"
-          : "rooms.policies.cancelFlexibleBody"
+        ? "rooms.policies.cancelFlexibleBodyRooms"
         : "rooms.policies.cancelNonRefundableBody"
     ]}
   </p>
@@ -194,83 +154,54 @@
             </span>
           </span>
           <span class="col-start-2 text-sm leading-relaxed text-stone-700">
-            {@render terms(offer)}
+            <RoomRateCancellation {offer} {text} {lang} {currency} showSaving />
           </span>
-          <span class="col-start-2">{@render payments(offer)}</span>
+          <span class="col-start-2">
+            <RoomRatePayments {offer} {text} {currency} />
+          </span>
         </label>
       {/each}
     </fieldset>
   </div>
   <aside class={summaryLayout} aria-labelledby="stay-summary">
     <div class="p-5 md:p-6">
-      {#if several}
-        <h2
-          id="stay-summary"
-          class="font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase"
-        >
-          {say("reservation.review.stay")}
-        </h2>
-        <ol class="mt-3 flex flex-col divide-y divide-stone-200">
-          {#each chosen as item, index (index)}
-            {@const thumb = item.room.photos[0]}
-            <li class="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
-              {#if thumb}
-                <img
-                  class="size-16 shrink-0 object-cover object-center"
-                  src={thumb.src}
-                  srcset={thumb.srcSet}
-                  sizes="4rem"
-                  width={thumb.width}
-                  height={thumb.height}
-                  alt=""
-                />
-              {/if}
-              <div class="min-w-0">
-                <p class="text-lg leading-snug font-semibold text-pretty text-stone-900">
-                  {item.room.name}
-                </p>
-                <p class="mt-0.5 text-sm text-stone-600">
-                  {fill(searchCopy.roomNumber, { n: index + 1 })} · {occupancySummary(
-                    searchCopy,
-                    item.request,
-                  )}
-                </p>
-              </div>
-            </li>
-          {/each}
-        </ol>
-      {:else}
-      <div class="flex items-start gap-4">
-        {#if photo}
-          <img
-            class="size-20 shrink-0 object-cover object-center"
-            src={photo.src}
-            srcset={photo.srcSet}
-            sizes="5rem"
-            width={photo.width}
-            height={photo.height}
-            alt={photo.alt}
-          />
-        {/if}
-        <div class="min-w-0">
-          <h2
-            id="stay-summary"
-            class="font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase"
-          >
-            {say("reservation.review.stay")}
-          </h2>
-          <p class="mt-2 text-xl font-semibold text-pretty text-stone-900">{room.name}</p>
-          <p class="mt-1 text-sm text-stone-600">{room.beds} · {room.area}</p>
-        </div>
-      </div>
-      {/if}
-      <dl
-        class={`mt-4 flex flex-col gap-2 text-sm ${several ? "border-t border-stone-200 pt-4" : ""}`}
+      <h2
+        id="stay-summary"
+        class="font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase"
       >
+        {say("reservation.review.stay")}
+      </h2>
+      <ol class="mt-3 flex flex-col divide-y divide-stone-200">
+        {#each chosen as item, index (index)}
+          {@const thumb = item.room.photos[0]}
+          <li class="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
+            {#if thumb}
+              <img
+                class="size-16 shrink-0 object-cover object-center"
+                src={thumb.src}
+                srcset={thumb.srcSet}
+                sizes="4rem"
+                width={thumb.width}
+                height={thumb.height}
+                alt=""
+              />
+            {/if}
+            <div class="min-w-0">
+              <p class="text-lg leading-snug font-semibold text-pretty text-stone-900">
+                {item.room.name}
+              </p>
+              <p class="mt-0.5 text-sm text-stone-600">
+                {fill(searchCopy.roomNumber, { n: index + 1 })} · {occupancySummary(
+                  searchCopy,
+                  item.request,
+                )}
+              </p>
+            </div>
+          </li>
+        {/each}
+      </ol>
+      <dl class="mt-4 flex flex-col gap-2 border-t border-stone-200 pt-4 text-sm">
         {@render summaryRow(say("reservation.review.dates"), `${dates} · ${nights}`)}
-        {#if !several}
-          {@render summaryRow(say("reservation.review.guests"), guests)}
-        {/if}
         {@render summaryRow(
           say("reservation.review.plan"),
           say(`reservation.plan.${selected.ratePlan}`),
@@ -279,7 +210,7 @@
       <div class="mt-4 border-t border-stone-200 pt-4">
         <p class="text-sm text-stone-600">{say("reservation.offer.total")}</p>
         <p class="text-3xl font-semibold text-stone-900">{money(selected.totalCents)}</p>
-        <div class="mt-3">{@render payments(selected)}</div>
+        <div class="mt-3"><RoomRatePayments offer={selected} {text} {currency} /></div>
         <p class="mt-3 text-xs text-stone-600">
           {say("reservation.offer.taxes", { currency: phase.result.currency })}
         </p>

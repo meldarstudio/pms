@@ -1,9 +1,11 @@
 import { copyFile } from "node:fs/promises";
 import { defineConfig, envField, fontProviders } from "astro/config";
+import cloudflare from "@astrojs/cloudflare";
 import svelte from "@astrojs/svelte";
 import tailwindcss from "@tailwindcss/vite";
 import sitemap from "@astrojs/sitemap";
 import { hreflangs } from "./src/i18n/hreflang.ts";
+import { roomGalleryImages } from "./build/room-gallery-images.mjs";
 
 function copyEnglish404() {
   return {
@@ -17,6 +19,11 @@ function copyEnglish404() {
 }
 
 export default defineConfig({
+  adapter: cloudflare({
+    imageService: { build: "compile", runtime: "passthrough" },
+    prerenderEnvironment: "node",
+  }),
+  session: false,
   devToolbar: { enabled: false },
   site: "https://www.hotelmanantialchurin.com",
   trailingSlash: "always",
@@ -40,7 +47,7 @@ export default defineConfig({
     },
   },
   vite: {
-    plugins: [tailwindcss()],
+    plugins: [tailwindcss(), roomGalleryImages()],
   },
   i18n: {
     locales: ["es", "en"],
@@ -49,6 +56,10 @@ export default defineConfig({
   integrations: [
     svelte(),
     sitemap({
+      customPages: [
+        "https://www.hotelmanantialchurin.com/habitaciones/",
+        "https://www.hotelmanantialchurin.com/en/habitaciones/",
+      ],
       filter: (page) =>
         !/^\/(en\/)?(reservar\/|libro-de-reclamaciones\/)/.test(new URL(page).pathname),
       i18n: {

@@ -1,13 +1,13 @@
 <script lang="ts">
   import type { BookingStepsText } from "./booking-steps";
 
-  const order = ["room", "rate", "review"] as const;
-  type BookingStep = (typeof order)[number];
+  type BookingStep = "room" | "rate" | "review";
   let {
     text,
     current,
     hrefs,
     onChangeRoom,
+    singleRoom = false,
     id,
     class: className,
   }: {
@@ -15,17 +15,19 @@
     current: BookingStep;
     hrefs?: Partial<Record<BookingStep, string>>;
     onChangeRoom?: () => void;
+    singleRoom?: boolean;
     id?: string;
     class?: string;
   } = $props();
 
+  const order: BookingStep[] = $derived(singleRoom ? ["room", "review"] : ["room", "rate", "review"]);
   const position = $derived(order.indexOf(current));
   const completedAction =
     "flex min-h-11 w-full cursor-pointer flex-col justify-start [&_[data-step-label]]:underline [&_[data-step-label]]:decoration-stone-300 [&_[data-step-label]]:underline-offset-4 hover:[&_[data-step-label]]:text-accent-800 hover:[&_[data-step-label]]:decoration-accent-500";
 </script>
 
 <nav {id} aria-label={text["reservation.steps"]} class={className}>
-  <ol class="grid grid-cols-3 gap-2 md:gap-3">
+  <ol class={["grid gap-2 md:gap-3", singleRoom ? "grid-cols-2" : "grid-cols-3"]}>
     {#each order as step, index (step)}
       {@const done = index < position}
       {@const active = index === position}

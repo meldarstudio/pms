@@ -24,6 +24,17 @@
   gap: 0.5rem;
 }
 
+.lp-field[hidden] {
+  display: none;
+}
+
+.lp-native {
+  min-width: 0;
+  min-height: 2.75rem;
+  border: 1px solid var(--color-stone-400);
+  padding: 0 0.75rem;
+}
+
 .lp-field > label,
 .lp-label {
   color: var(--color-stone-600);
@@ -387,5 +398,9 @@
 
   .lp-submit {
     white-space: nowrap;
+  }
+
+  .lp-fields:has(.lp-field:not([hidden]) .lp-native) {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
   }
 }

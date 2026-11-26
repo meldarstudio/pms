@@ -1,6 +1,6 @@
 import type { Lang } from "@/i18n/utils";
 import type { StayDetailId } from "@/lib/included";
-import type { OfferSearchResult } from "@/lib/reservation/offers";
+import type { OfferSearchResult, SearchOutcome } from "@/lib/reservation/offers";
 import type { StaySearch } from "@/lib/reservation/search";
 import type { StaySearchCopy } from "@/lib/reservation/stay-copy";
 import type { RoomId } from "@/lib/rooms";
@@ -37,11 +37,13 @@ export type RoomsBookingProps = {
   details: StayDetails;
   text: RoomsBookingText;
   searchCopy: StaySearchCopy;
+  action: string;
+  initial: { search: StaySearch; outcome: SearchOutcome | null };
 };
 
 export type Phase =
   | { kind: "idle" }
-  | { kind: "loading"; search: StaySearch; previous?: OfferSearchResult }
+  | { kind: "loading"; search: StaySearch }
   | { kind: "problem"; title: RoomsBookingKey; body: RoomsBookingKey; retry: boolean }
   | { kind: "found"; search: StaySearch; result: OfferSearchResult };
 

@@ -69,10 +69,3 @@ export const fetchOffers = (search: Pick<StaySearch, "checkIn" | "checkOut">) =>
     ),
     Effect.catchTags(pmsFailures(() => Effect.succeed<SearchOutcome>({ kind: "unavailable" }))),
   );
-
-export function lowestOffer(offers: RoomTypeOffers | undefined) {
-  return offers?.offers.reduce<PlanOffer | undefined>(
-    (lowest, offer) => (!lowest || offer.totalCents < lowest.totalCents ? offer : lowest),
-    undefined,
-  );
-}
