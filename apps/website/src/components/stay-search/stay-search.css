@@ -35,11 +35,6 @@
   padding: 0 0.75rem;
 }
 
-.lp-search-guide {
-  margin-top: 0.75rem;
-  line-height: 1.5;
-}
-
 .lp-field > label,
 .lp-label {
   color: var(--color-stone-600);

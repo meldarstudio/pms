@@ -193,7 +193,12 @@
       animateCheckmark={paymentSubmittedHere}
     />
   {:else}
-    <BookingSteps {text} current="review" hrefs={{ room: choiceHref, rate: ratesHref }} />
+    <BookingSteps
+      {text}
+      current="review"
+      singleRoom={search?.requests.length === 1}
+      hrefs={{ room: choiceHref, rate: ratesHref }}
+    />
     <h1 class="mt-6 text-2xl font-semibold text-pretty text-stone-900 md:text-3xl">
       {say("reservation.review.title")}
     </h1>

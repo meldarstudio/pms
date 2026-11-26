@@ -177,7 +177,8 @@
     searchParams(a).toString() === searchParams(b).toString();
 
   function focusAfter(previous: StaySearch, next: StaySearch): PendingFocus {
-    const before = ratesOpen(previous);
+    if (next.requests.length === 1) return null;
+    const before = previous.requests.length > 1 && ratesOpen(previous);
     const after = ratesOpen(next);
     if (after && !before) return { kind: "rates" };
     if (!after && (before || previous.at !== next.at)) return { kind: "step" };
@@ -355,7 +356,7 @@
         {lang}
         {roomIds}
         {action}
-        guide={text["rooms.searchGuide"]}
+        nativeFallback
         initial={boot.search}
         copy={searchCopy}
         onSearch={(next) => search(editParty(address, next))}

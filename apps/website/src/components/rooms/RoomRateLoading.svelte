@@ -5,7 +5,7 @@
 
   let { text }: { text: RoomsBookingText } = $props();
   const plans = ["non_refundable", "flexible"] as const;
-  const summaryKeys = ["dates", "guests", "plan"] as const;
+  const summaryKeys = ["dates", "plan"] as const;
   const payLabels = ["reservation.rate.due", "reservation.offer.remaining"] as const;
 </script>
 

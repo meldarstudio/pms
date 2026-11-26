@@ -52,7 +52,15 @@
   import { fill } from "@/lib/reservation/format";
   import { newRoomRequest, type StaySearch } from "@/lib/reservation/search";
 
-  let { action, onSearch, lang, copy, roomIds = [], guide, initial }: StaySearchProps = $props();
+  let {
+    action,
+    onSearch,
+    lang,
+    copy,
+    roomIds = [],
+    nativeFallback = false,
+    initial,
+  }: StaySearchProps = $props();
   const datePopup = createPopoverController<DateField>();
   const guestPopup = createPopoverController();
   const wide = new MediaQuery(wideScreen, true);
@@ -148,11 +156,11 @@
   {action}
   method="get"
   novalidate
-  aria-busy={!ready && !guide}
+  aria-busy={!ready && !nativeFallback}
   onsubmit={submit}
 >
-  <fieldset class="lp-fields" disabled={!ready && !guide}>
-    {#if ready || !guide}
+  <fieldset class="lp-fields" disabled={!ready && !nativeFallback}>
+    {#if ready || !nativeFallback}
     <Popover controller={datePopup} presentation={mobile ? "sheet" : "popover"}>
       {#each dateFields as field (field)}
         {@const id = dateId(field)}
@@ -345,7 +353,7 @@
       </Popover>
     </div>
     {/if}
-    {#if guide}
+    {#if nativeFallback}
       {#each dateFields as field (field)}
         <div class="lp-field" hidden={ready}>
           <label for={`native-${field}`}>{copy[field]}</label>
@@ -381,6 +389,5 @@
     {/if}
     <button type="submit" class="lp-submit">{copy.submit}</button>
   </fieldset>
-  {#if guide}<p class="lp-search-guide">{guide}</p>{/if}
   <p class="sr-only" role="status" aria-atomic="true">{announcement}</p>
 </form>

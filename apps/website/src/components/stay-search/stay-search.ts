@@ -24,7 +24,7 @@ export type StaySearchProps = {
   copy: StaySearchCopy;
   roomIds?: readonly string[];
   action?: string;
-  guide?: string;
+  nativeFallback?: boolean;
   initial?: StaySearch;
   onSearch?: (search: StaySearch) => void;
 };

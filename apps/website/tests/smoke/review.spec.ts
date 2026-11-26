@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { fillContact, payButton, reviewPath, serverCheckout } from "../support/checkout";
 import { daysFromToday, doubleSoldOutStay, openStay } from "../support/local-api";
 import { closeCardFormWithoutPaying, stubPaymentScripts, useOwnSourceIp } from "../support/payment";
-import { selectRoomRate } from "../support/room-rate";
 
 test.beforeEach(async ({ page }) => {
   await stubPaymentScripts(page);
@@ -23,7 +22,6 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
 }) => {
   const params = new URLSearchParams({ ...openStay(), adults: "2", children: "0" });
   await page.goto(`/habitaciones/?${params.toString()}`);
-  await selectRoomRate(page, "Suite Matrimonial", "Flexible");
   await page
     .getByRole("link", { name: "Continuar con Suite Matrimonial, tarifa Flexible" })
     .click();
@@ -91,5 +89,7 @@ test("a room lost before review returns to the rooms without picking another", a
   await expect(
     page.getByText(/Su habitación preferida, Doble Premium, no está disponible/),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: /^Reservar Doble Premium/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: /^Continuar con Doble Premium, tarifa/ }),
+  ).toHaveCount(0);
 });

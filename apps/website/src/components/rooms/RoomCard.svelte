@@ -95,7 +95,7 @@
     {@render factList([...facts, { id: "wifi", label: text["rooms.card.wifi"] }], true)}
     <Dialog presentation={wide.current ? "dialog" : "sheet"}>
       <DialogTrigger
-        class="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 self-start font-source-sans-3 text-xs font-semibold tracking-widest text-stone-900 uppercase underline decoration-accent-500 decoration-2 underline-offset-[6px] hover:text-accent-800"
+        class="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 self-start font-source-sans-3 text-xs font-semibold tracking-widest text-stone-700 uppercase hover:text-accent-800"
       >
         <RoomIcon name="info" class="size-4 text-accent-700" />
         {text["rooms.details.open"]}

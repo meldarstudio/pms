@@ -166,8 +166,6 @@ export const ui = {
     "rooms.cta": "See all room types",
     "rooms.imageAlt": "King room at Hotel Manantial",
     "rooms.pageTitle": "Rooms & rates in Churín",
-    "rooms.searchGuide":
-      "Search parameters: checkIn and checkOut are YYYY-MM-DD. adults and children are one number for one room. Several rooms are written in order, separated by commas, for example adults=2,1&children=0,1. The number of adults values is the number of rooms. room, if present, only moves that room up; it does not filter or select it.",
     "rooms.liveOffers": "Offers for this search",
     "rooms.king.name": "King room",
     "rooms.king.lead":
@@ -230,8 +228,6 @@ export const ui = {
     "rooms.policies.breakfast": "Breakfast",
     "rooms.policies.breakfastValue": "The hotel does not provide breakfast service.",
     "rooms.policies.cancelTitle": "Cancellation",
-    "rooms.policies.cancelFlexibleBody":
-      "Flexible rate: you may cancel free of charge up to and including two calendar days before your arrival date, Peru time. If you cancel after this deadline or do not arrive, the first night's accommodation will be charged.",
     "rooms.policies.cancelFlexibleBodyRooms":
       "Flexible rate: you may cancel free of charge up to and including two calendar days before your arrival date, Peru time. If you cancel after this deadline or do not arrive, each room's first night is charged, added together.",
     "rooms.policies.cancelNonRefundableBody":
@@ -396,7 +392,6 @@ export const ui = {
     "reservation.rate.continue": "Continue",
     "reservation.rate.continueLabel": "Continue with {room}, {plan} rate",
     "reservation.rate.due": "Due when booking",
-    "reservation.rate.from": "From",
     "reservation.rate.see": "See rates",
     "reservation.rate.choose": "Choose the rate",
     "reservation.rate.photos": "See photos",
@@ -853,8 +848,6 @@ export const ui = {
     "rooms.cta": "Ver todos los tipos de habitación",
     "rooms.imageAlt": "Suite matrimonial del Hotel Manantial",
     "rooms.pageTitle": "Habitaciones y precios en Churín",
-    "rooms.searchGuide":
-      "Parámetros de búsqueda: checkIn y checkOut son AAAA-MM-DD. adults y children son un número para una habitación. Varias habitaciones se escriben en orden, separadas por comas, por ejemplo adults=2,1&children=0,1. La cantidad de valores en adults es la cantidad de habitaciones. room, si está, solo sube esa habitación; no filtra ni la elige.",
     "rooms.liveOffers": "Ofertas para esta búsqueda",
     "rooms.king.name": "Suite Matrimonial",
     "rooms.king.lead":
@@ -917,8 +910,6 @@ export const ui = {
     "rooms.policies.breakfast": "Desayuno",
     "rooms.policies.breakfastValue": "El hotel no ofrece servicio de desayuno.",
     "rooms.policies.cancelTitle": "Cancelación",
-    "rooms.policies.cancelFlexibleBody":
-      "Tarifa Flexible: puede cancelar sin cargo hasta dos días calendario antes de su fecha de llegada, inclusive, según la hora de Perú. Si cancela después de este plazo o no se presenta, se cobrará el importe de la primera noche de alojamiento.",
     "rooms.policies.cancelFlexibleBodyRooms":
       "Tarifa Flexible: puede cancelar sin cargo hasta dos días calendario antes de su fecha de llegada, inclusive, según la hora de Perú. Si cancela después de este plazo o no se presenta, se cobra la primera noche de cada habitación, sumadas.",
     "rooms.policies.cancelNonRefundableBody":
@@ -1084,7 +1075,6 @@ export const ui = {
     "reservation.rate.continue": "Continuar",
     "reservation.rate.continueLabel": "Continuar con {room}, tarifa {plan}",
     "reservation.rate.due": "A pagar al reservar",
-    "reservation.rate.from": "Desde",
     "reservation.rate.see": "Ver tarifas",
     "reservation.rate.choose": "Elija la tarifa",
     "reservation.rate.photos": "Ver fotos",
