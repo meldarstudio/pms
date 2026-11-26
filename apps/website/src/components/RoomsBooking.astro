@@ -8,16 +8,14 @@ import { PUBLIC_PMS_API_URL } from "astro:env/client";
 import { getRelativeLocaleUrl } from "astro:i18n";
 import { formatMoney } from "@/lib/reservation/format";
 import { reviewStepHref } from "@/lib/reservation/links";
-import { loadRoomPage } from "@/lib/reservation/room-page";
 import { staySearchCopy } from "@/lib/reservation/stay-copy";
 import { rooms } from "@/lib/rooms";
 
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
-Astro.response.headers.set("Cache-Control", "private, no-store");
-Astro.response.headers.set("CDN-Cache-Control", "no-store");
-const connectingIp = Astro.request.headers.get("cf-connecting-ip");
-const { initial, reference } = await loadRoomPage(Astro.url, PUBLIC_PMS_API_URL, connectingIp);
+const { roomPage } = Astro.locals;
+if (!roomPage) throw new Error("Room booking requires room page middleware data");
+const { initial, reference } = roomPage;
 let referenceRates: RoomsBookingProps["referenceRates"] = { kind: "unavailable" };
 if (reference.kind === "found") {
   const { currency, roomTypes } = reference.result;

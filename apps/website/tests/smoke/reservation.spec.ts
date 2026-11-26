@@ -140,6 +140,7 @@ test("a guest can search without JavaScript and resume a shared two-room stay th
 
       const dated = await bare.goto(roomsPath(stay, {}, prefix));
       expect(dated?.headers()["cache-control"]).toContain("no-store");
+      expect(dated?.headers()["cdn-cache-control"]).toBe("no-store");
       await expect(bare.locator('link[rel="canonical"]')).toHaveAttribute(
         "href",
         `https://www.hotelmanantialchurin.com${prefix}/habitaciones/`,
