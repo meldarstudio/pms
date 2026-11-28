@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { parseISO } from "date-fns";
-import { SummaryRow, accountStatus } from "@/components/balance-status";
+import { SummaryRow, accountStatus, accountStatusTextTone } from "@/components/balance-status";
 import { DiscountPopover } from "@/components/discount-popover";
 import { culqiPendingLine } from "@/components/refund-forms";
 import { paymentMethods } from "@/components/reservation-entry-forms";
@@ -194,16 +194,9 @@ function BalanceToggle({ detail, disabled }: { detail: ReservationDetail; disabl
   );
 }
 
-const balanceTone = {
-  owing: "text-destructive",
-  "owed-back": "text-credit-foreground",
-  "refund-requested": "text-preview-foreground",
-  settled: "text-booking-foreground",
-} satisfies Record<ReturnType<typeof accountStatus>["state"], string>;
-
 function AccountBalance({ detail, edit }: Props) {
   const status = accountStatus(detail);
-  const textTone = balanceTone[status.state];
+  const textTone = accountStatusTextTone[status.state];
   return (
     <section aria-label="Estado de la cuenta" className="flex flex-col gap-1 px-6 pt-6 pb-5">
       <p className={cn("flex items-center gap-1.5 text-xs font-medium", textTone)}>

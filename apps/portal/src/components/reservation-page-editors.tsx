@@ -3,6 +3,7 @@ import { useSelector } from "@tanstack/react-form";
 import { XIcon } from "lucide-react";
 import { cn } from "cn";
 import { DiscardChanges } from "@/components/discard-changes";
+import { RoomsEditor } from "@/components/rooms-editor";
 import { StayEditor } from "@/components/stay-editor";
 import { GuestEntryForm, PaymentForm } from "@/components/reservation-entry-forms";
 import { CouponIssued, RefundForm, ResolveRefundForm } from "@/components/refund-forms";
@@ -30,6 +31,14 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useIsMobile, useIsTablet } from "@/hooks/use-mobile";
 import { FieldGroup, FieldDescription, FieldError } from "@/components/ui/field";
 import type {
@@ -62,11 +71,13 @@ import {
   staffReservationChannels,
 } from "@/lib/reservation-list";
 import { translateError } from "@/lib/errors";
+import { stayRange } from "@/lib/dates";
 import { toast } from "sonner";
 import { toastError } from "@/lib/toast";
 
 export type ReservationEditorTarget =
   | { kind: "stay" }
+  | { kind: "rooms"; trigger: HTMLButtonElement }
   | { kind: "contact" }
   | { kind: "guest"; id?: string }
   | { kind: "payment" }
@@ -83,6 +94,8 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
       return "Perdonar cargo";
     case "stay":
       return "Editar estadía";
+    case "rooms":
+      return "Editar habitaciones";
     case "contact":
       return detail.channel === "online" ? "Contacto y notas" : "Contacto, canal y notas";
     case "guest":
@@ -136,6 +149,7 @@ export function ReservationPageEditor({
   const [leaving, setLeaving] = useState(false);
   const { send, saving } = useReservationCommands(detail.id);
   const [issued, setIssued] = useState<ReservationCoupon | null>(null);
+  const editRooms = target.kind === "rooms";
   const fullScreen = ["stay", "contact", "guest", "payment"].includes(target.kind);
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
@@ -183,10 +197,15 @@ export function ReservationPageEditor({
     else finish();
   }
   const title = issued ? "Cupón emitido" : editorTitle(target, detail);
-  const descriptionText =
-    target.kind === "status" &&
-    target.status === "confirmed" &&
-    (detail.status === "cancelled" || detail.status === "no_show")
+  const finalFocus =
+    target.kind === "rooms"
+      ? () => (target.trigger.isConnected ? target.trigger : true)
+      : undefined;
+  const descriptionText = editRooms
+    ? stayRange(detail.checkIn, detail.checkOut)
+    : target.kind === "status" &&
+        target.status === "confirmed" &&
+        (detail.status === "cancelled" || detail.status === "no_show")
       ? "Volverá a Confirmada."
       : target.kind === "resolve-refund" && target.failing
         ? "El reembolso queda registrado como fallido y el dinero sigue por devolver."
@@ -194,6 +213,8 @@ export function ReservationPageEditor({
   const body =
     target.kind === "stay" ? (
       <StayEditor detail={detail} onCancel={close} onDirtyChange={handleDirty} onSaved={finish} />
+    ) : editRooms ? (
+      <RoomsEditor detail={detail} onCancel={close} onDirtyChange={handleDirty} onSaved={finish} />
     ) : target.kind === "guest" ? (
       <GuestEntryForm
         scrollable
@@ -322,9 +343,18 @@ export function ReservationPageEditor({
         >
           <DrawerContent
             ref={setPopup}
-            className="overflow-hidden pb-[env(safe-area-inset-bottom)] data-[swipe-axis=y]:[--drawer-content-max-height:min(90dvh,calc(var(--reservation-viewport-height,100dvh)-1rem))] data-[swipe-direction=down]:bottom-(--reservation-keyboard-inset,0px)"
+            finalFocus={finalFocus}
+            className={cn(
+              "overflow-hidden pb-[env(safe-area-inset-bottom)] data-[swipe-axis=y]:[--drawer-content-max-height:min(90dvh,calc(var(--reservation-viewport-height,100dvh)-1rem))] data-[swipe-direction=down]:bottom-(--reservation-keyboard-inset,0px)",
+              editRooms && "data-[swipe-axis=y]:h-(--drawer-content-max-height)",
+            )}
           >
-            <DrawerHeader className="shrink-0 border-b pb-4 group-data-[swipe-axis=y]/drawer-popup:text-left">
+            <DrawerHeader
+              className={cn(
+                "shrink-0 border-b pb-4 group-data-[swipe-axis=y]/drawer-popup:text-left",
+                editRooms && "py-3",
+              )}
+            >
               <div className="flex items-start gap-2">
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <DrawerTitle>{title}</DrawerTitle>
@@ -340,11 +370,42 @@ export function ReservationPageEditor({
                 </DrawerClose>
               </div>
             </DrawerHeader>
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-4">
-              {body}
-            </div>
+            {editRooms ? (
+              body
+            ) : (
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-4">
+                {body}
+              </div>
+            )}
           </DrawerContent>
         </Drawer>
+      ) : editRooms ? (
+        <Sheet
+          open
+          onOpenChange={(open) => {
+            if (!open) close();
+          }}
+        >
+          <SheetContent
+            finalFocus={finalFocus}
+            showCloseButton={false}
+            className="overflow-hidden data-[side=right]:sm:max-w-md"
+          >
+            <SheetHeader className="shrink-0 flex-row items-start justify-between gap-2 border-b px-4 py-3">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <SheetTitle>{title}</SheetTitle>
+                <SheetDescription>{descriptionText}</SheetDescription>
+              </div>
+              <SheetClose
+                render={<Button variant="ghost" size="icon-sm" disabled={saving} />}
+                aria-label="Cerrar"
+              >
+                <XIcon />
+              </SheetClose>
+            </SheetHeader>
+            {body}
+          </SheetContent>
+        </Sheet>
       ) : (
         <Dialog
           open
@@ -398,7 +459,7 @@ function ReservationActionForm({
 }: {
   target: Exclude<
     ReservationEditorTarget,
-    { kind: "guest" | "stay" | "payment" | "refund" | "resolve-refund" | "waiver" }
+    { kind: "guest" | "stay" | "rooms" | "payment" | "refund" | "resolve-refund" | "waiver" }
   >;
   detail: ReservationDetail;
   disabled: boolean;

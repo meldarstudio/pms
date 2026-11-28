@@ -289,8 +289,9 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("edit-room"),
       lineId: z.string(),
-      room: workflowRoom,
+      room: workflowRoom.partial({ adults: true, children: true }),
       expectedRoomId: z.string().nullable().optional(),
+      expectedRoomTypeId: z.string().min(1).optional(),
     })
     .strict(),
   z.object({ type: z.literal("add-room"), room: workflowRoom }).strict(),

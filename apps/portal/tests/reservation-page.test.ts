@@ -171,7 +171,13 @@ function mockApi(options: ApiOptions = {}) {
           ...saved,
           rooms: saved.rooms.map((line) =>
             line.id === action.lineId
-              ? { ...line, roomId: room?.id ?? null, roomNumber: room?.number ?? null }
+              ? {
+                  ...line,
+                  roomId: room?.id ?? null,
+                  roomNumber: room?.number ?? null,
+                  adults: action.room.adults ?? line.adults,
+                  children: action.room.children ?? line.children,
+                }
               : line,
           ),
         };
@@ -356,7 +362,7 @@ async function unloadPrevented() {
   return event.defaultPrevented;
 }
 
-function assignedRoomFixture() {
+it("changes only the selected room through Editar estadía", async () => {
   page.api.catalog.rooms.push(
     { id: "room-2", number: "102", roomTypeId: "double" },
     { id: "room-3", number: "103", roomTypeId: "double" },
@@ -370,27 +376,21 @@ function assignedRoomFixture() {
       { ...room, id: "line-2", roomId: "room-3", roomNumber: "103" },
     ],
   };
-  page.api.on("GET", "/reservations", () => [saved]);
   mockApi();
-}
-
-async function chooseReplacement() {
-  await click("Cambiar habitación 101");
-  await page.until(() => !!popup()?.querySelector('[aria-label="Seleccionar habitación 102"]'));
-  await click("Seleccionar habitación 102");
-}
-
-it("replaces only the selected assignment and writes once, after confirmation", async () => {
-  assignedRoomFixture();
   await render();
-  await chooseReplacement();
-  assert.equal(writes.length, 0, "Selecting a replacement must not release the existing room");
-  const confirm = button("Cambiar a 102");
-  await React.act(async () => {
-    confirm.click();
-    confirm.click();
-  });
-  await page.until(() => !!page.container.querySelector('[aria-label="Cambiar habitación 102"]'));
+  await click("Editar estadía");
+  await page.until(() => !dateTrigger("Hab.").disabled);
+  await React.act(async () => dateTrigger("Hab.").click());
+  await React.act(async () => statusOption("102").click());
+  await page.until(() => !button("Guardar cambios").disabled);
+  assert.equal(writes.length, 0);
+  await submit();
+  await page.until(() => !popup());
+  const rooms = page.container.querySelector('[aria-label="Habitaciones"]')!;
+  assert.deepEqual(
+    Array.from(rooms.children, (room) => room.firstElementChild?.textContent),
+    ["102", "103"],
+  );
   assert.deepEqual(
     writes.map((write) => write.actions),
     [
@@ -399,11 +399,138 @@ it("replaces only the selected assignment and writes once, after confirmation", 
           type: "edit-room",
           lineId: "line-1",
           room: { roomTypeId: "double", roomId: "room-2", adults: 2, children: 0 },
-          expectedRoomId: "room-1",
         },
       ],
     ],
   );
+});
+
+it("shows the selected room's saved nightly prices after viewing another room", async () => {
+  const room = saved.rooms[0];
+  saved = {
+    ...saved,
+    rooms: [
+      { ...room, roomId: "room-1", roomNumber: "101" },
+      {
+        ...room,
+        id: "line-2",
+        roomId: "room-2",
+        roomNumber: "102",
+        subtotalCents: 23000,
+        totalCents: 23000,
+        nights: [
+          { date: "2026-10-19", priceCents: 12000 },
+          { date: "2026-10-20", priceCents: 11000 },
+        ],
+      },
+    ],
+    subtotalCents: 53000,
+    discountCents: 5000,
+    savedDiscountCents: 5000,
+    totalCents: 48000,
+    balanceCents: 48000,
+  };
+  await render();
+
+  await click("Ver detalles de la habitación 101 · Doble");
+  await page.until(() => Boolean(popup()));
+  assert.deepEqual(Array.from(popup()!.querySelectorAll("dd"), text), [
+    "S/ 150",
+    "S/ 150",
+    "S/ 300",
+  ]);
+  await click("Cerrar");
+  await page.until(() => !popup());
+
+  await click("Ver detalles de la habitación 102 · Doble");
+  await page.until(() => Boolean(popup()));
+  assert.deepEqual(Array.from(popup()!.querySelectorAll("dd"), text), [
+    "S/ 120",
+    "S/ 110",
+    "S/ 230",
+  ]);
+});
+
+it("keeps a failed occupancy edit available to retry on the same reserved room", async () => {
+  const room = saved.rooms[0];
+  saved.rooms = [
+    { ...room, roomId: "room-1", roomNumber: "101" },
+    { ...room, id: "line-2", roomId: "room-2", roomNumber: "102" },
+  ];
+  page.api.catalog.rooms.push({ id: "room-2", number: "102", roomTypeId: "double" });
+  mockApi({
+    write: () =>
+      writes.length === 1
+        ? Response.json({ error: "service unavailable" }, { status: 503 })
+        : undefined,
+  });
+  await render();
+  await click("Ver detalles de la habitación 102 · Doble");
+  const childCount = () =>
+    popup()
+      ?.querySelector('button[aria-label="Aumentar niños"]')
+      ?.closest('[role="group"]')
+      ?.querySelector("output")?.textContent;
+  await click("Aumentar niños");
+  assert.equal(writes.length, 0);
+  await submit();
+  await page.until(() => popup()?.textContent.includes("service unavailable") === true);
+  assert.equal(childCount(), "1");
+
+  await submit();
+  await page.until(() => popup()?.textContent.includes("Cambiar asignación") === true);
+  assert.equal(childCount(), "1");
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[1], writes[0]);
+  assert.deepEqual(writes[1].actions, [
+    {
+      type: "edit-room",
+      lineId: "line-2",
+      expectedRoomId: "room-2",
+      room: { roomTypeId: "double", roomId: "room-2", children: 1 },
+    },
+  ]);
+});
+
+it("returns to the reservation when a room switch is dismissed or saved, preserving saved prices", async () => {
+  saved.rooms[0] = { ...saved.rooms[0], roomId: "room-1", roomNumber: "101" };
+  page.api.catalog.rooms.push({ id: "room-2", number: "102", roomTypeId: "double" });
+  page.api.on("GET", "/reservations", () => [saved]);
+  mockApi();
+  await render();
+  await click("Ver detalles de la habitación 101 · Doble");
+  await click("Cambiar asignación");
+  await page.until(() => popup()?.querySelector("h2")?.textContent === "Cambiar asignación");
+  await click("Cerrar");
+  await page.until(() => !popup());
+  assert.equal(writes.length, 0);
+
+  await click("Ver detalles de la habitación 101 · Doble");
+  await click("Cambiar asignación");
+  const replacement = "Cambiar Ana Pérez a habitación 102, 2026-10-19 al 2026-10-21";
+  await page.until(() => popup()?.querySelector(`button[aria-label="${replacement}"]`) != null);
+  await click(replacement);
+  await page.until(() => !popup());
+  assert.deepEqual(
+    writes.map((command) => command.actions),
+    [
+      [
+        {
+          type: "edit-room",
+          lineId: "line-1",
+          expectedRoomId: "room-1",
+          room: { roomTypeId: "double", roomId: "room-2" },
+        },
+      ],
+    ],
+  );
+  await click("Ver detalles de la habitación 102 · Doble");
+  await page.until(() => popup()?.querySelector("h2")?.textContent === "Habitación 102");
+  assert.deepEqual(Array.from(popup()!.querySelectorAll("dd"), text), [
+    "S/ 150",
+    "S/ 150",
+    "S/ 300",
+  ]);
 });
 
 function accountToggle() {
@@ -1107,6 +1234,184 @@ it.each([false, true])("marks a stay as not presented with inline waiver = %s", 
       : []),
   ]);
   await page.until(() => text(window.document.body).includes("Marcada como no presentada"));
+});
+
+async function chooseRoomOption(trigger: ReturnType<typeof dateTrigger>, label: string) {
+  await React.act(async () => trigger.click());
+  const list = window.document.getElementById(trigger.getAttribute("aria-controls")!);
+  const option = Array.from(list?.querySelectorAll<HTMLElement>('[role="option"]') ?? []).find(
+    (node) => node.textContent.trim() === label,
+  );
+  assert.ok(option, `Missing room option ${label}`);
+  await React.act(async () => option.click());
+}
+
+it("saves assignments and occupancy together without opening a quote", async () => {
+  page.mobile();
+  page.api.catalog.rooms.push({ id: "room-2", number: "102", roomTypeId: "double" });
+  saved.rooms[0] = { ...saved.rooms[0], roomId: "room-1", roomNumber: "101" };
+  mockApi();
+  await render();
+  await click("Editar habitaciones");
+  await page.until(() => popup()?.querySelector('button[role="combobox"]:not(:disabled)') != null);
+  assert.equal(button("Guardar").disabled, true);
+
+  await chooseRoomOption(dateTrigger("Asignación"), "102");
+  await click("Reducir adultos");
+  await click("Aumentar niños");
+  await click("Guardar");
+  await page.until(() => !popup());
+
+  assert.equal(previews.length, 0);
+  assert.deepEqual(
+    writes.map(({ actions }) => actions),
+    [
+      [
+        {
+          type: "edit-room",
+          lineId: "line-1",
+          expectedRoomTypeId: "double",
+          room: { roomTypeId: "double", roomId: "room-2", adults: 1, children: 1 },
+        },
+      ],
+    ],
+  );
+  assert.ok(button("Ver detalles de la habitación 102 · Doble"));
+});
+
+it("saves room edits, removals and additions together after staff review the current quote", async () => {
+  page.api.catalog.roomTypes.push(
+    { id: "single", name: "Individual", maxAdults: 1, maxChildren: 0, baseRateCents: 9000 },
+    { id: "suite", name: "Suite", maxAdults: 2, maxChildren: 1, baseRateCents: 21000 },
+  );
+  page.api.catalog.rooms.push(
+    { id: "room-2", number: "102", roomTypeId: "single" },
+    { id: "room-3", number: "103", roomTypeId: "suite" },
+    { id: "room-4", number: "104", roomTypeId: "double" },
+  );
+  const double = { ...saved.rooms[0], roomId: "room-1", roomNumber: "101" };
+  saved = {
+    ...saved,
+    subtotalCents: 60000,
+    totalCents: 60000,
+    paidCents: 10000,
+    balanceCents: 50000,
+    rooms: [double, { ...double, id: "line-4", roomId: "room-4", roomNumber: "104" }],
+  };
+  const single = {
+    ...double,
+    id: "line-2",
+    roomTypeId: "single",
+    roomTypeName: "Individual",
+    roomId: "room-2",
+    roomNumber: "102",
+    adults: 1,
+    subtotalCents: 18000,
+    totalCents: 18000,
+  };
+  const suite = {
+    ...double,
+    id: "line-3",
+    roomTypeId: "suite",
+    roomTypeName: "Suite",
+    roomId: null,
+    roomNumber: null,
+    adults: 2,
+    subtotalCents: 42000,
+    totalCents: 42000,
+  };
+  const firstBill = {
+    ...saved,
+    subtotalCents: 30000,
+    totalCents: 30000,
+    balanceCents: 20000,
+    rooms: [{ ...double, adults: 1 }],
+  };
+  const currentBill = {
+    ...firstBill,
+    subtotalCents: 90000,
+    totalCents: 90000,
+    balanceCents: 80000,
+    rooms: [firstBill.rooms[0], single, suite],
+  };
+  let finishCurrent: ((quote: WorkflowPreview) => void) | undefined;
+  mockApi({
+    preview: ({ actions }) => {
+      if (actions.some((action) => action.type === "add-room") && !writes.length)
+        return new Promise((resolve) => {
+          finishCurrent = resolve;
+        });
+      return { billing: writes.length ? currentBill : firstBill, validation: { issues: [] } };
+    },
+    write: () => Response.json((saved = currentBill)),
+  });
+  await render();
+  await click("Editar habitaciones");
+  const quote = () => popup()!.querySelector('[aria-label="Cotización"]');
+  type RoomControl = ReturnType<typeof dateTrigger>;
+  const roomControls = () => popup()!.querySelectorAll<RoomControl>('button[role="combobox"]');
+  assert.equal(button("Guardar").disabled, true);
+  await page.until(() => roomControls()[0]?.textContent.includes("Doble") === true);
+  assert.match(text(roomControls()[1]), /101/);
+  const fewerAdults = popup()!.querySelectorAll('button[aria-label="Reducir adultos"]')[0];
+  assert.ok(fewerAdults instanceof window.HTMLButtonElement);
+  await React.act(async () => fewerAdults.click());
+  await click("Quitar habitación 2");
+  assert.equal(popup()!.querySelector('button[aria-label="Quitar habitación 1"]'), null);
+  assert.equal(previews.length, 0);
+  await page.until(() => !button("Ver cotización").disabled);
+  await submit();
+  await page.until(() => !button("Confirmar cambios").disabled);
+  assert.match(text(quote()!), /1 adulto.*Hab\. 101.*S\/ 300/);
+
+  await click("Volver");
+  assert.equal(popup()!.querySelector("output")?.textContent, "1");
+  assert.ok(button("Deshacer"));
+  await click("Agregar habitación");
+  await chooseRoomOption(roomControls()[2], "Individual");
+  await chooseRoomOption(roomControls()[3], "102");
+  await click("Agregar habitación");
+  await chooseRoomOption(roomControls()[4], "Suite");
+  const moreAdults = popup()!.querySelectorAll('button[aria-label="Aumentar adultos"]')[2];
+  assert.ok(moreAdults instanceof window.HTMLButtonElement);
+  await React.act(async () => moreAdults.click());
+  await submit();
+  await page.until(() => !!finishCurrent);
+  assert.doesNotMatch(text(quote()!), /Nuevo total de la reserva/);
+  assert.equal(button("Confirmar cambios").disabled, true);
+  await submit();
+  assert.equal(writes.length, 0);
+
+  await React.act(async () =>
+    finishCurrent?.({ billing: currentBill, validation: { issues: [] } }),
+  );
+  await page.until(() => !button("Confirmar cambios").disabled);
+  assert.match(text(quote()!), /Individual.*Hab\. 102.*S\/ 180/);
+  assert.match(text(quote()!), /Suite.*2 adultos.*S\/ 420/);
+  assert.match(text(quote()!), /Habitaciones que se quitarán Doble · Hab\. 104/);
+  assert.match(text(quote()!), /Nuevo total de la reserva S\/ 900/);
+  assert.match(text(quote()!), /Saldo pendiente S\/ 800/);
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(
+    writes.map(({ actions }) => actions),
+    [
+      [
+        {
+          type: "edit-room",
+          lineId: "line-1",
+          room: { roomTypeId: "double", roomId: "room-1", adults: 1, children: 0 },
+        },
+        { type: "remove-room", lineId: "line-4" },
+        {
+          type: "add-room",
+          room: { roomTypeId: "single", roomId: "room-2", adults: 1, children: 0 },
+        },
+        { type: "add-room", room: { roomTypeId: "suite", roomId: null, adults: 2, children: 0 } },
+      ],
+    ],
+  );
+  assert.match(text(page.container), /Suite/);
 });
 
 it("saves stay changes independently with the current server bill", async () => {
@@ -2049,7 +2354,7 @@ it("reads an Unfulfilled reservation as Cancelada with nothing to do but return 
   };
   mockApi();
   await render();
-  assert.match(text(header()), /Reserva # TEST0001 Cancelada Canal: Web Ana Pérez/);
+  assert.match(text(header()), /Reserva # TEST0001 Ana Pérez Cancelada Canal: Web/);
   assert.equal(
     text(page.container.querySelector('[role="alert"]')!),
     "Reserva cancelada No había disponibilidad cuando se completó el pago en línea.",

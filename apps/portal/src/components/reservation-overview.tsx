@@ -3,6 +3,7 @@ import { cn } from "cn";
 import { MailIcon, PencilIcon, PhoneIcon, PlusIcon, CircleAlertIcon } from "lucide-react";
 import { parseISO } from "date-fns";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { GuestLine, NoStayingGuests, RowActions } from "@/components/reservation-records";
@@ -19,7 +20,6 @@ import { NationalityFlag } from "@/components/workflow-fields";
 import { format } from "@/lib/dates";
 import { propertyToday } from "@/lib/property-calendar";
 import { useReservationLayout } from "@/components/reservation-layout";
-import { Separator } from "@/components/ui/separator";
 
 type Model = { detail: ReservationDetail; edit: (target: ReservationEditorTarget) => void };
 
@@ -41,24 +41,24 @@ export function ReservationOverview({
     <fieldset disabled={disabled} aria-busy={disabled} className="min-w-0">
       <div className="grid min-w-0 gap-6 md:gap-8 group-data-[layout=columns]/reservation:-my-6 group-data-[layout=columns]/reservation:-mr-6 group-data-[layout=columns]/reservation:grid-cols-[minmax(0,1fr)_24rem] group-data-[layout=columns]/reservation:grid-rows-[auto_1fr] group-data-tablet/reservation:group-data-[layout=columns]/reservation:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="@container/overview-main flex min-w-0 flex-col gap-6 md:gap-4 group-data-[layout=columns]/reservation:pt-6">
-          <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 md:gap-x-4">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
-                  <span className="sr-only">Reserva </span>#{detail.code}
-                </p>
-                <ReservationStatusBadge status={detail.status} />
-                <span className="text-xs text-muted-foreground">
-                  <span className="sr-only">Canal: </span>
-                  {reservationChannelLabels[detail.channel]}
-                </span>
-              </div>
+          <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 md:gap-x-4">
+            <div className="col-start-1 row-start-1 flex min-w-0 flex-col gap-1.5">
+              <p className="font-mono text-xs tracking-wide wrap-anywhere text-muted-foreground uppercase">
+                <span className="sr-only">Reserva </span>#{detail.code}
+              </p>
               <div className="flex min-w-0 items-start gap-2.5">
                 <NationalityFlag nationality={detail.guest.nationality} className="mt-2 h-4 w-6" />
                 <h1 className="min-w-0 text-2xl font-semibold tracking-tight wrap-anywhere">
                   {detail.guest.fullName}
                 </h1>
               </div>
+            </div>
+            <div className="col-span-full row-start-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+              <ReservationStatusBadge status={detail.status} compact />
+              <Badge variant="outline">
+                <span className="sr-only">Canal: </span>
+                {reservationChannelLabels[detail.channel]}
+              </Badge>
             </div>
             {detail.status !== "unfulfilled" && (
               <div className={cn("col-start-2 row-start-1", !stacked && "md:col-start-3")}>
@@ -86,7 +86,6 @@ export function ReservationOverview({
           <ContactLine detail={detail} edit={edit} />
           <StayOutcomeAlert detail={detail} />
           <NotesLine detail={detail} />
-          <Separator className={cn("order-last", !stacked && "hidden")} />
         </div>
         <aside
           aria-label="Cuenta y huéspedes"

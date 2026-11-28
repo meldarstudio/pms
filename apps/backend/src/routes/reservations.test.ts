@@ -1309,6 +1309,61 @@ describe("concurrent reservation commands", () => {
     ).toBe("room-103");
   });
 
+  it("keeps concurrently edited occupancy and saved prices when a same-type room switch retries", async () => {
+    const d = await create();
+    const assigned = await command(d, [roomEdit(d)]);
+    const line = assigned.rooms[0];
+    const paused = pauseNextCommit();
+    const pending = command(assigned, [
+      {
+        type: "edit-room",
+        lineId: line.id,
+        expectedRoomId: "room-101",
+        room: { roomTypeId: line.roomTypeId, roomId: "room-102" },
+      },
+    ]);
+    await paused.ready;
+    try {
+      await command(assigned, [
+        {
+          type: "edit-room",
+          lineId: line.id,
+          expectedRoomId: "room-101",
+          room: { roomTypeId: line.roomTypeId, roomId: "room-101", adults: 2 },
+        },
+      ]);
+    } finally {
+      paused.resume();
+    }
+    expect((await pending).rooms[0]).toMatchObject({
+      roomId: "room-102",
+      adults: 2,
+      nights: line.nights,
+    });
+  });
+
+  it("rejects an occupancy edit that would undo a concurrent room type change", async () => {
+    seedRoomType(db.sqlite, { id: "other", name: "Twin", maxAdults: 3, baseRateCents: 20000 });
+    seedRooms(db.sqlite, "other", { "201": "201" });
+    const d = await create();
+    const paused = pauseNextCommit();
+    const pending = request(`/reservations/${d.id}/commands`, "POST", {
+      requestId: crypto.randomUUID(),
+      actions: [{ ...roomEdit(d, 0, { roomId: null, adults: 2 }), expectedRoomTypeId: "type" }],
+    });
+    await paused.ready;
+    try {
+      await command(d, [roomEdit(d, 0, { roomTypeId: "other", roomId: null })]);
+    } finally {
+      paused.resume();
+    }
+    expect((await pending).status).toBe(409);
+    expect(await (await request(`/reservations/${d.id}`)).json()).toMatchObject({
+      totalCents: 60000,
+      rooms: [{ roomTypeId: "other", roomId: null, adults: 1 }],
+    });
+  });
+
   it("keeps both distinct payments when a stale command retries", async () => {
     const d = await create();
     const paused = pauseNextCommit();

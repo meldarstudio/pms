@@ -356,17 +356,18 @@ export function usePendingHousekeepingRoomIds() {
   return new Set(pending.flat());
 }
 
-export function useHousekeeping() {
+export function useHousekeeping(enabled = true) {
   const { today } = usePropertyCalendar();
   const query = useQuery({
     queryKey: housekeepingQueryKey,
     queryFn: ({ signal }) => getHousekeeping(signal),
+    enabled,
   });
   const listDate = query.data?.date;
   const { refetch } = query;
   useEffect(() => {
-    if (listDate && listDate !== today) void refetch();
-  }, [listDate, today, refetch]);
+    if (enabled && listDate && listDate !== today) void refetch();
+  }, [enabled, listDate, today, refetch]);
   return query;
 }
 

@@ -10,11 +10,13 @@ export function CommandRecovery({
   retryKey,
   disabled,
   onDone,
+  successDescription = "Revisa los cambios guardados en Movimientos.",
 }: {
   reservationId: string;
   retryKey: string;
   disabled: boolean;
   onDone: () => void;
+  successDescription?: string;
 }) {
   const commands = useReservationCommands(reservationId);
   if (!commands.canReplay([], retryKey)) return null;
@@ -35,7 +37,7 @@ export function CommandRecovery({
             (result.status === "failed" && result.code === earlierAttemptSaved)
           ) {
             toast.success("Intento anterior comprobado", {
-              description: "Revisa los cambios guardados en Movimientos.",
+              description: successDescription,
             });
             onDone();
           } else if (result.status === "failed") outcomeSaveError(result);

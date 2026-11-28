@@ -3,7 +3,6 @@ import { cn } from "cn";
 import { SectionHeading } from "@/components/reservation-section";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useReservationLayout } from "@/components/reservation-layout";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -40,13 +39,14 @@ export function ReservationOverviewSkeleton() {
         className="grid min-w-0 gap-6 md:gap-8 group-data-[layout=columns]/reservation:-my-6 group-data-[layout=columns]/reservation:-mr-6 group-data-[layout=columns]/reservation:grid-cols-[minmax(0,1fr)_24rem] group-data-[layout=columns]/reservation:grid-rows-[auto_1fr] group-data-tablet/reservation:group-data-[layout=columns]/reservation:grid-cols-[minmax(0,1fr)_18rem]"
       >
         <div className="flex min-w-0 flex-col gap-6 md:gap-4 group-data-[layout=columns]/reservation:pt-6">
-          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 md:gap-x-4">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <TextBar className="text-xs" width="w-16 sm:w-36" />
-                <Skeleton className={cn(stacked ? "h-5" : "h-6", "w-24")} />
-              </div>
-              <TextBar className="text-2xl" width="w-56" />
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 md:gap-x-4">
+            <div className="col-start-1 row-start-1 flex min-w-0 flex-col gap-1.5">
+              <TextBar className="text-xs" width="w-20" />
+              <TextBar className="text-2xl" width="w-56 max-w-full" />
+            </div>
+            <div className="col-span-full row-start-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <Skeleton className="h-(--badge-h) w-20" />
+              <Skeleton className="h-(--badge-h) w-16" />
             </div>
             <div className={cn("col-start-2 row-start-1", !stacked && "md:col-start-3")}>
               <Skeleton className={tablet ? "size-(--control-h-lg)" : "size-(--control-h)"} />
@@ -77,7 +77,6 @@ export function ReservationOverviewSkeleton() {
               <TextBar className="sm:hidden" width="w-1/2" />
             </div>
           </div>
-          {stacked && <Separator />}
         </div>
         <div className="contents group-data-[layout=columns]/reservation:sticky group-data-[layout=columns]/reservation:top-0 group-data-[layout=columns]/reservation:col-start-2 group-data-[layout=columns]/reservation:row-span-2 group-data-[layout=columns]/reservation:row-start-1 group-data-[layout=columns]/reservation:flex group-data-[layout=columns]/reservation:h-[calc(100svh-3rem-1px)] group-data-[layout=columns]/reservation:min-w-0 group-data-[layout=columns]/reservation:flex-col group-data-[layout=columns]/reservation:overflow-y-auto group-data-[layout=columns]/reservation:border-l group-data-[layout=columns]/reservation:bg-muted/40">
           {!stacked && (
@@ -164,14 +163,14 @@ export function ReservationOverviewSkeleton() {
             />
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
               <div className="flex min-w-0 flex-col gap-1">
-                <p className="text-xs text-muted-foreground">Ingreso</p>
-                <TextBar className="text-xl font-medium" width="w-18" />
+                <p className="text-xs font-medium text-muted-foreground">Ingreso</p>
+                <TextBar className="text-xl font-semibold" width="w-18" />
                 <TextBar className="text-xs" width="w-24" />
               </div>
               <TextBar className="text-xs" width="w-14" />
               <div className="flex min-w-0 flex-col items-end gap-1">
-                <p className="text-xs text-muted-foreground">Salida</p>
-                <TextBar className="text-right text-xl font-medium" width="w-18" />
+                <p className="text-xs font-medium text-muted-foreground">Salida</p>
+                <TextBar className="text-right text-xl font-semibold" width="w-18" />
                 <TextBar className="text-right text-xs" width="w-24" />
               </div>
             </div>
@@ -194,12 +193,9 @@ export function ReservationOverviewSkeleton() {
                 <div className="flex w-20 shrink-0 items-center justify-center border-r border-dashed bg-muted/40 text-xl sm:w-24 sm:text-2xl">
                   <TextBar width="w-12" />
                 </div>
-                <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3">
-                  <div className="flex min-w-0 flex-col">
-                    <TextBar className="text-sm" width="w-20" />
-                    <TextBar className="text-xs" width="w-32" />
-                  </div>
-                  <TextBar className="shrink-0 text-sm" width="w-14" />
+                <div className="flex min-w-0 flex-1 flex-col px-4 py-3">
+                  <TextBar className="text-sm" width="w-20" />
+                  <TextBar className="text-xs" width="w-20" />
                 </div>
               </div>
             </div>
@@ -266,15 +262,16 @@ function MobileReservationSkeleton() {
       </p>
       <div aria-hidden className="flex min-w-0 flex-col gap-6">
         <div className="flex min-w-0 flex-col gap-6">
-          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5">
             <div className="flex min-w-0 flex-col gap-1.5">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <TextBar className="text-xs" width="w-22" />
-                <Skeleton className="h-6 w-24" />
-              </div>
-              <TextBar className="text-2xl font-semibold" width="w-44" />
+              <TextBar className="text-xs" width="w-20" />
+              <TextBar className="text-2xl" width="w-44 max-w-full" />
             </div>
             <Skeleton className="size-(--control-h-lg)" />
+            <div className="col-span-full flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <Skeleton className="h-(--badge-h) w-20" />
+              <Skeleton className="h-(--badge-h) w-16" />
+            </div>
           </div>
           <div className="-mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-xs">
             <div className="flex min-w-0 flex-wrap items-center gap-x-4">
@@ -300,7 +297,6 @@ function MobileReservationSkeleton() {
               </div>
             </div>
           </div>
-          <Separator />
         </div>
         <div className="flex min-w-0 flex-col gap-8">
           <div className="flex min-w-0 flex-col gap-3">
@@ -320,14 +316,14 @@ function MobileReservationSkeleton() {
             />
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 py-2">
               <div className="flex min-w-0 flex-col gap-1">
-                <p className="text-xs text-muted-foreground">Ingreso</p>
-                <TextBar className="text-xl font-medium" width="w-18" />
+                <p className="text-xs font-medium text-muted-foreground">Ingreso</p>
+                <TextBar className="text-xl font-semibold" width="w-18" />
                 <TextBar className="text-xs" width="w-18" />
               </div>
               <TextBar className="text-xs" width="w-14" />
               <div className="flex min-w-0 flex-col items-end gap-1">
-                <p className="text-xs text-muted-foreground">Salida</p>
-                <TextBar className="text-xl font-medium" width="w-18" />
+                <p className="text-xs font-medium text-muted-foreground">Salida</p>
+                <TextBar className="text-xl font-semibold" width="w-18" />
                 <TextBar className="text-xs" width="w-18" />
               </div>
             </div>
@@ -350,12 +346,9 @@ function MobileReservationSkeleton() {
                 <div className="flex w-20 shrink-0 items-center justify-center border-r border-dashed bg-muted/40 text-xl font-semibold">
                   <TextBar width="w-8" />
                 </div>
-                <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3">
-                  <div className="flex min-w-0 flex-col">
-                    <TextBar className="text-sm font-medium" width="w-34" />
-                    <TextBar className="text-xs" width="w-34" />
-                  </div>
-                  <TextBar className="shrink-0 text-sm font-medium" width="w-12" />
+                <div className="flex min-w-0 flex-1 flex-col px-4 py-3">
+                  <TextBar className="text-sm font-medium" width="w-34" />
+                  <TextBar className="text-xs" width="w-20" />
                 </div>
               </div>
             </div>

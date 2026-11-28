@@ -45,19 +45,29 @@ export function NightlyPriceDetail({
             <h4 className="font-medium">
               Habitación {index + 1} · {room.typeName}
             </h4>
-            <dl className="flex flex-col gap-1">
-              {room.nights.map((night) => (
-                <div key={night.date} className="flex items-baseline justify-between gap-4">
-                  <dt className="text-muted-foreground">
-                    {format(parseISO(night.date), "EEE d MMM")}
-                  </dt>
-                  <dd className="tabular-nums">{formatMoney(night.priceCents, currency)}</dd>
-                </div>
-              ))}
-            </dl>
+            <NightlyPriceList nights={room.nights} currency={currency} />
           </section>
         ))}
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+export function NightlyPriceList({
+  nights,
+  currency,
+}: {
+  nights: NightlyPriceRoom["nights"];
+  currency: string;
+}) {
+  return (
+    <dl className="flex flex-col gap-1">
+      {nights.map((night) => (
+        <div key={night.date} className="flex items-baseline justify-between gap-4">
+          <dt className="text-muted-foreground">{format(parseISO(night.date), "EEE d MMM")}</dt>
+          <dd className="tabular-nums">{formatMoney(night.priceCents, currency)}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }

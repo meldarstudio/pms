@@ -4,6 +4,7 @@ import { PlusIcon } from "lucide-react";
 import { overlappingRoomIds, availableRoomTypeIds } from "@/lib/reservation-editor";
 import { holdsInventory } from "@/lib/reservation-statuses";
 import { useStayDraft } from "@/lib/use-stay-draft";
+import { GuestCount } from "@/components/guest-count";
 import { ReservationRoomRow } from "@/components/reservation-room-rows";
 import { BookingSummary } from "@/components/booking-summary";
 import { Button } from "@/components/ui/button";
@@ -21,17 +22,14 @@ import { emptyDetails } from "@/lib/reservation-form-schemas";
 import { ratePlanLabels } from "@/lib/rate-plans";
 import { stayRange } from "@/lib/dates";
 
-export function StayEditor({
-  detail,
-  onDirtyChange,
-  onCancel,
-  onSaved,
-}: {
+export type StayEditorProps = {
   detail: ReservationDetail;
   onDirtyChange: (dirty: boolean) => void;
   onCancel: () => void;
   onSaved: () => void;
-}) {
+};
+
+export function StayEditor({ detail, onDirtyChange, onCancel, onSaved }: StayEditorProps) {
   const formId = useId();
   const stayDraft = useStayDraft({ detail, onSubmit: saveChanges });
   const {
@@ -244,7 +242,7 @@ export function StayEditor({
   );
 }
 
-function useRoomAssignmentOptions(
+export function useRoomAssignmentOptions(
   room: { checkIn: string; checkOut: string },
   reservationId: string,
 ) {
@@ -260,10 +258,11 @@ function useRoomAssignmentOptions(
     assignable: new Set(types.flatMap((type) => type.freeRoomIds)),
     ready: enabled && availability.isSuccess,
     error: availability.error?.message,
+    retry: availability.refetch,
   };
 }
 
-const StayRoomFields = withReservationForm({
+export const StayRoomFields = withReservationForm({
   defaultValues: emptyDetails,
   props: {
     roomIndex: 0,
@@ -272,12 +271,12 @@ const StayRoomFields = withReservationForm({
     typesReady: false,
     blockedRoomIds: new Set<string>(),
     errors: {} as Record<string, string>,
-    row: { index: 0, count: 1, reveal: false, onRemove: () => {} } as {
+    row: null as {
       index: number;
       count: number;
       reveal: boolean;
       onRemove: () => void;
-    },
+    } | null,
   },
   render: function StayRoomFields({
     form,
@@ -292,6 +291,7 @@ const StayRoomFields = withReservationForm({
     const types = useRoomTypes(),
       rooms = useRooms();
     const room = useSelector(form.store, (state) => state.values.rooms[roomIndex].room);
+    const type = types.data?.find((item) => item.id === room.roomTypeId);
     const stay = useSelector(form.store, (state) => ({
       checkIn: state.values.checkIn,
       checkOut: state.values.checkOut,
@@ -305,7 +305,7 @@ const StayRoomFields = withReservationForm({
     const capacityId = useId();
     const assignmentError = errors[`rooms[${roomIndex}].room.roomId`];
     const assignmentErrorId = useId();
-    const typeError = errors[`rooms[${roomIndex}].room.roomTypeId`];
+    const typeError = (row || room.roomTypeId) && errors[`rooms[${roomIndex}].room.roomTypeId`];
     const typeErrorId = useId();
     const typeField = (
       <form.AppField
@@ -319,7 +319,8 @@ const StayRoomFields = withReservationForm({
       >
         {(field) => (
           <field.Choice
-            label="Tipo"
+            label={row ? "Tipo" : "Tipo de habitación"}
+            placeholder={row ? undefined : "Selecciona un tipo"}
             disabled={!typesReady}
             groupErrorId={typeError ? typeErrorId : undefined}
             options={(types.data ?? [])
@@ -333,9 +334,9 @@ const StayRoomFields = withReservationForm({
       <form.AppField name={`rooms[${roomIndex}].room.roomId`}>
         {(field) => (
           <field.Choice
-            label="Hab."
+            label={row ? "Hab." : "Asignación"}
             nullable
-            disabled={!availability.ready}
+            disabled={!availability.ready || (!row && !room.roomTypeId)}
             groupErrorId={assignmentError ? assignmentErrorId : undefined}
             options={[
               { value: "none", label: "Sin asignar" },
@@ -390,7 +391,8 @@ const StayRoomFields = withReservationForm({
         )}
       </form.AppField>
     );
-    const feedback = (capacity || typeError || assignmentError || availability.error) && (
+    const availabilityError = row && availability.error;
+    const feedback = (capacity || typeError || assignmentError || availabilityError) && (
       <>
         {capacity && (
           <FieldError id={capacityId} className="col-span-full">
@@ -407,12 +409,12 @@ const StayRoomFields = withReservationForm({
             {assignmentError}
           </FieldError>
         )}
-        {availability.error && (
-          <FieldError className="col-span-full">{availability.error}</FieldError>
+        {availabilityError && (
+          <FieldError className="col-span-full">{availabilityError}</FieldError>
         )}
       </>
     );
-    return (
+    return row ? (
       <ReservationRoomRow
         {...row}
         typeField={typeField}
@@ -421,6 +423,36 @@ const StayRoomFields = withReservationForm({
         childrenField={childrenField}
         feedback={feedback}
       />
+    ) : (
+      <FieldGroup className="gap-3 *:data-[slot=field-group]:gap-3">
+        <FieldGroup className="grid @min-[21rem]/field-group:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] [&_[data-slot=select-value]]:min-w-0">
+          {typeField}
+          {roomField}
+        </FieldGroup>
+        <FieldGroup className="grid grid-cols-2">
+          <GuestCount
+            label="Adultos"
+            value={Number(room.adults)}
+            min={1}
+            max={Math.min(100, type?.maxAdults ?? 100)}
+            errorId={capacity ? capacityId : undefined}
+            onChange={(value) =>
+              form.setFieldValue(`rooms[${roomIndex}].room.adults`, String(value))
+            }
+          />
+          <GuestCount
+            label="Niños"
+            value={Number(room.children)}
+            min={0}
+            max={Math.min(100, type?.maxChildren ?? 100)}
+            errorId={capacity ? capacityId : undefined}
+            onChange={(value) =>
+              form.setFieldValue(`rooms[${roomIndex}].room.children`, String(value))
+            }
+          />
+        </FieldGroup>
+        {feedback}
+      </FieldGroup>
     );
   },
 });

@@ -9,6 +9,7 @@ import type { ReservationDetail } from "@/lib/api";
 import { format, nightsBetween } from "@/lib/dates";
 import { ratePlanLabels } from "@/lib/rate-plans";
 import { occupantsLabel } from "@/lib/reservation-list";
+import { holdsInventory } from "@/lib/reservation-statuses";
 
 const nightsLabel = (count: number) => `${count} ${count === 1 ? "noche" : "noches"}`;
 
@@ -45,7 +46,25 @@ export function StaySection({
           className="items-end text-right"
         />
       </dl>
-      <div className="pt-2">
+      <div className="flex min-w-0 flex-col gap-2 pt-2">
+        {holdsInventory(detail.status) && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
+              Habitaciones
+            </h3>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="pointer-coarse:min-h-(--control-h-lg)"
+              aria-haspopup="dialog"
+              onClick={(event) => edit({ kind: "rooms", trigger: event.currentTarget })}
+            >
+              <PencilIcon data-icon="inline-start" />
+              Editar habitaciones
+            </Button>
+          </div>
+        )}
         <AssignedRooms detail={detail} />
       </div>
     </ReservationSection>
@@ -68,11 +87,13 @@ function StayEnd({ day, label, className }: { day: string; label: string; classN
   const date = parseISO(day);
   return (
     <p className={cn("flex min-w-0 flex-col gap-1", className)}>
-      <span className="text-xs text-muted-foreground">
+      <span className="text-xs font-medium text-muted-foreground">
         {label}
         <span className="sr-only">: </span>
       </span>
-      <span className="text-xl font-medium tracking-tight capitalize">{format(date, "EEE d")}</span>
+      <span className="text-xl font-semibold tracking-tight capitalize">
+        {format(date, "EEE d")}
+      </span>
       <span className="text-xs text-muted-foreground capitalize">
         <span className="md:hidden">{format(date, "MMM yyyy")}</span>
         <span className="max-md:hidden">{format(date, "MMMM yyyy")}</span>
