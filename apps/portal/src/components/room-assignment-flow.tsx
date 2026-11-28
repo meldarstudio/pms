@@ -1,13 +1,13 @@
 import { differenceInCalendarDays, parseISO } from "date-fns";
-import { BedDoubleIcon, CheckIcon, ChevronRightIcon } from "lucide-react";
-import { cn } from "cn";
+import { ChevronRightIcon } from "lucide-react";
+import { useId } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DirtyRoomBadge } from "@/components/dirty-room-badge";
-import type { HousekeepingStatus, Room } from "@/lib/api";
+import type { HousekeepingRoom, Room } from "@/lib/api";
 import { format } from "@/lib/dates";
 import type { ReservationStay } from "@/lib/assignment-availability";
 import type { useRoomAssignment } from "@/lib/use-room-assignment";
@@ -33,7 +33,7 @@ function reservedRoomLabel(stay: ReservationStay, typeNames: Map<string, string>
 
 export type RoomAssignmentStepsProps = {
   stays: ReservationStay[];
-  rooms: (Room & { housekeepingStatus: HousekeepingStatus })[] | null;
+  rooms: (Room & Pick<HousekeepingRoom, "roomTypeName" | "housekeepingStatus">)[] | null;
   typeNames: Map<string, string>;
   loading: boolean;
   listError: string | null;
@@ -42,7 +42,6 @@ export type RoomAssignmentStepsProps = {
   onRetry: () => void;
   onRetryAssignment: () => void;
   onHighlightRoom?: (roomId: string | null) => void;
-  selection?: { roomId: string | null; select: (roomId: string) => void };
 };
 
 export function RoomAssignmentSteps({
@@ -56,11 +55,12 @@ export function RoomAssignmentSteps({
   onRetry,
   onRetryAssignment,
   onHighlightRoom,
-  selection,
 }: RoomAssignmentStepsProps) {
+  const optionId = useId();
   const { today } = usePropertyCalendar();
   const { target, checking, ready, pending, eligibleCount, groupAssignments } = assignment;
-  const availabilityError = assignment.error ?? (selection && rooms === null ? listError : null);
+  const switching = target != null && target.roomId !== null;
+  const availabilityError = assignment.error ?? (rooms === null ? listError : null);
   const error = availabilityError ?? assignment.saveError;
   const availableRooms = ready
     ? (rooms ?? [])
@@ -91,7 +91,7 @@ export function RoomAssignmentSteps({
         </div>
         <p role="status" className="text-muted-foreground">
           {pending
-            ? selection
+            ? switching
               ? "Cambiando habitación…"
               : "Asignando habitación…"
             : checking && !availabilityError
@@ -117,43 +117,32 @@ export function RoomAssignmentSteps({
           <ul className="flex flex-col border" onMouseLeave={() => onHighlightRoom?.(null)}>
             {availableRooms.map((room, index) => {
               const showDirtyRoom = showDirty && room.housekeepingStatus === "dirty";
-              const selected = selection?.roomId === room.id;
+              const typeDescriptionId = `${optionId}-${index}`;
               return (
                 <li key={room.id}>
                   {index > 0 && <Separator />}
                   <button
                     type="button"
-                    aria-label={
-                      selection
-                        ? `Seleccionar habitación ${room.number}${showDirtyRoom ? ", sucia" : ""}`
-                        : `Asignar ${target.guestName} a habitación ${room.number}, ${target.checkIn} al ${target.checkOut}${showDirtyRoom ? ", sucia" : ""}`
-                    }
-                    aria-pressed={selection ? selected : undefined}
+                    aria-label={`${switching ? "Cambiar" : "Asignar"} ${target.guestName} a habitación ${room.number}, ${target.checkIn} al ${target.checkOut}${showDirtyRoom ? ", sucia" : ""}`}
+                    aria-describedby={typeDescriptionId}
                     disabled={pending}
-                    onClick={() =>
-                      selection ? selection.select(room.id) : void assignment.assignRoom(room.id)
-                    }
+                    onClick={() => void assignment.assignRoom(room.id)}
                     onMouseEnter={() => onHighlightRoom?.(room.id)}
                     onFocus={() => onHighlightRoom?.(room.id)}
                     onBlur={() => onHighlightRoom?.(null)}
-                    className={cn(
-                      "flex w-full cursor-pointer items-center gap-2 p-2.5 text-left outline-none enabled:hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-default disabled:text-muted-foreground",
-                      selected && "bg-accent",
-                    )}
+                    className="flex min-h-11 w-full cursor-pointer items-center gap-2 p-2.5 text-left outline-none enabled:hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-default disabled:text-muted-foreground"
                   >
-                    <BedDoubleIcon className="size-4 shrink-0" aria-hidden="true" />
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="flex items-center gap-1.5">
-                        <span className="font-medium">Habitación {room.number}</span>
-                        {showDirtyRoom ? <DirtyRoomBadge /> : null}
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5">
+                      <span className="font-medium wrap-anywhere">Habitación {room.number}</span>
+                      <span
+                        id={typeDescriptionId}
+                        className="min-w-0 wrap-anywhere text-muted-foreground"
+                      >
+                        {room.roomTypeName}
                       </span>
-                      <span className="text-muted-foreground">Disponible</span>
+                      {showDirtyRoom ? <DirtyRoomBadge /> : null}
                     </span>
-                    {selection ? (
-                      selected && <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
-                    ) : (
-                      <ChevronRightIcon className="size-4 shrink-0" aria-hidden="true" />
-                    )}
+                    <ChevronRightIcon className="size-4 shrink-0" aria-hidden="true" />
                   </button>
                 </li>
               );
@@ -165,9 +154,9 @@ export function RoomAssignmentSteps({
             <EmptyHeader>
               <EmptyTitle>Sin habitaciones disponibles</EmptyTitle>
               <EmptyDescription>
-                No hay {selection ? "otras " : ""}habitaciones de este tipo disponibles para toda la
-                estancia.
-                {!selection && " Vuelve a la lista para seleccionar otra habitación reservada."}
+                {switching
+                  ? "No hay otras habitaciones de este tipo disponibles para toda la estancia."
+                  : "No hay habitaciones de este tipo disponibles para toda la estancia. Vuelve a la lista para seleccionar otra habitación reservada."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -241,15 +230,9 @@ function AvailableRoomsSkeleton({ count }: { count: number }) {
       {Array.from({ length: count }, (_, index) => (
         <li key={index}>
           {index > 0 && <Separator />}
-          <div className="flex items-center gap-2 p-2.5">
-            <BedDoubleIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="font-medium">
-                <TextBar className="w-22" />
-              </span>
-              <span>
-                <TextBar className="w-14" />
-              </span>
+          <div className="flex min-h-11 items-center gap-2 p-2.5">
+            <span className="flex min-w-0 flex-1 items-center">
+              <TextBar className="w-22" />
             </span>
             <ChevronRightIcon
               className="size-4 shrink-0 text-muted-foreground"

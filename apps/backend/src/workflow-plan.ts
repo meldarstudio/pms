@@ -274,10 +274,16 @@ const handlers: Handlers = {
   },
   async "edit-room"(action, ctx) {
     const { db, state } = ctx;
-    const line = lineFor(ctx, action.lineId),
-      room = action.room;
+    const line = lineFor(ctx, action.lineId);
+    if (action.expectedRoomTypeId !== undefined && line.roomTypeId !== action.expectedRoomTypeId)
+      throw new HttpError(409, "room type changed");
     if (action.expectedRoomId !== undefined && line.roomId !== action.expectedRoomId)
       throw new HttpError(409, "room assignment changed");
+    const room = {
+      ...action.room,
+      adults: action.room.adults ?? line.adults,
+      children: action.room.children ?? line.children,
+    };
     const nights = await price(
       db,
       { ...room, ...state.reservation },

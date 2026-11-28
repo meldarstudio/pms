@@ -41,12 +41,24 @@ function useDraftCommand(actionsKey: string) {
   );
 }
 
+export function emptyRoomDraft(): DetailsValues["rooms"][number] {
+  return {
+    id: crypto.randomUUID(),
+    room: { roomTypeId: "", roomId: null, adults: "1", children: "0" },
+    removed: false,
+  };
+}
+
 export function useStayDraft({
   detail,
   onSubmit,
+  roomsOnly = false,
+  previewEnabled = true,
 }: {
   detail: ReservationDetail;
   onSubmit: () => Promise<void>;
+  roomsOnly?: boolean;
+  previewEnabled?: boolean;
 }) {
   const queryClient = useQueryClient();
   const roomTypes = useRoomTypes();
@@ -88,11 +100,15 @@ export function useStayDraft({
   const validation = schema.safeParse(values);
   const localErrors = schemaErrors(validation);
   const countsValid = validation.success && !!roomTypes.data;
-  const pricingValid = pricingSchema.safeParse(values).success && !!roomTypes.data;
+  const pricingValid = roomsOnly
+    ? countsValid
+    : pricingSchema.safeParse(values).success && !!roomTypes.data;
+  const reservationChanged =
+    roomsOnly && JSON.stringify(defaults) !== JSON.stringify(detailsDefaults(detail));
   const changes = roomEdits(detail, drafts);
-  if (stay.checkIn !== detail.checkIn || stay.checkOut !== detail.checkOut)
+  if (!roomsOnly && (stay.checkIn !== detail.checkIn || stay.checkOut !== detail.checkOut))
     changes.unshift({ type: "dates", ...stay });
-  const dirty = changes.length > 0 || (!validation.success && !unchanged);
+  const dirty = roomsOnly ? !unchanged : changes.length > 0 || (!validation.success && !unchanged);
   const previewActions = validationPreviewActions(changes);
   const validationNeeded = previewActions.length > 0;
   const billingDirty = hasBillingChanges(detail, changes);
@@ -120,6 +136,8 @@ export function useStayDraft({
       return result;
     },
     enabled:
+      previewEnabled &&
+      !reservationChanged &&
       validationNeeded &&
       previewCommand.actions.length > 0 &&
       previewCommand === validationCommand &&
@@ -151,7 +169,15 @@ export function useStayDraft({
   useEffect(() => {
     setServerErrors(form, previewFields ?? {});
   }, [form, previewFields]);
-  const billing = billingDirty ? (pricingValid ? quote.data : undefined) : detail;
+  const billing = roomsOnly
+    ? previewEnabled && !reservationChanged && pricingValid && previewLoaded && previewReady
+      ? editPreview.data.billing
+      : undefined
+    : billingDirty
+      ? pricingValid
+        ? quote.data
+        : undefined
+      : detail;
 
   function reset(saved: ReservationDetail) {
     rejectedFields.current = null;
@@ -169,6 +195,7 @@ export function useStayDraft({
     form,
     values,
     drafts,
+    reservationChanged,
     stay,
     roomTypes,
     dirty,
@@ -181,6 +208,7 @@ export function useStayDraft({
     },
     submission: {
       command: editCommand,
+      valid: countsValid,
       allowed: countsValid && dirty && previewReady,
       disabled:
         !dirty || roomTypes.isPending || roomTypes.isError || (pricingValid && !previewReady),
@@ -188,11 +216,12 @@ export function useStayDraft({
     summary: {
       billing,
       rooms: detailsSummaryRooms(values, billing?.rooms),
-      provisional: billingDirty,
+      billingChanged: billingDirty,
       calculating:
-        billingDirty &&
+        (roomsOnly ? validationNeeded : billingDirty) &&
         pricingValid &&
         !billing &&
+        (!roomsOnly || !previewLoaded) &&
         (!editPreview.error || !previewCurrent || editPreview.isFetching),
       error:
         validationNeeded &&

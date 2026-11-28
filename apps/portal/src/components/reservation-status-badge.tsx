@@ -8,9 +8,9 @@ function statusVariant(status: string) {
   return status === "cancelled" || status === "unfulfilled" ? "cancelled" : "secondary";
 }
 
-export function ReservationStatusBadge({ status }: { status: string }) {
+export function ReservationStatusBadge({ status, compact }: { status: string; compact?: boolean }) {
   return (
-    <Badge variant={statusVariant(status)} className="min-w-24 px-1.5">
+    <Badge variant={statusVariant(status)} className={compact ? undefined : "min-w-24 px-1.5"}>
       {reservationStatusLabel(status)}
     </Badge>
   );

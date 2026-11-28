@@ -43,6 +43,13 @@ export function accountStatus(
   return { state: "settled" as const, ...settled, cents: 0 };
 }
 
+export const accountStatusTextTone = {
+  owing: "text-destructive",
+  "owed-back": "text-credit-foreground",
+  "refund-requested": "text-preview-foreground",
+  settled: "text-booking-foreground",
+} satisfies Record<ReturnType<typeof accountStatus>["state"], string>;
+
 export function BalanceLabel({ balanceCents }: { balanceCents: number }) {
   const { label, Icon } = balanceStatus(balanceCents);
   return (
